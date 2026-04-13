@@ -1,6 +1,7 @@
 import logging
 import os
 import json
+from datetime import datetime
 from dotenv import load_dotenv
 
 from livekit import agents, api
@@ -11,6 +12,7 @@ from livekit.plugins import (
     deepgram,
     noise_cancellation,
     silero,
+    elevenlabs,
 )
 from livekit.agents import llm
 from typing import Annotated, Optional
@@ -26,6 +28,7 @@ logger = logging.getLogger("outbound-agent")
 # TRUNK ID - This needs to be set after you crate your trunk
 # You can find this by running 'python setup_trunk.py --list' or checking LiveKit Dashboard
 OUTBOUND_TRUNK_ID = os.getenv("OUTBOUND_TRUNK_ID")
+SIP_OUTBOUND_NUMBER = os.getenv("SIP_OUTBOUND_NUMBER", "")
 SIP_DOMAIN = os.getenv("VOBIZ_SIP_DOMAIN") 
 
 
@@ -38,6 +41,11 @@ def _build_tts():
         model = os.getenv("CARTESIA_TTS_MODEL", "sonic-2")
         voice = os.getenv("CARTESIA_TTS_VOICE", "f786b574-daa5-4673-aa0c-cbe3e8534c02")
         return cartesia.TTS(model=model, voice=voice)
+    
+    if provider == "elevenlabs":
+        logger.info("Using ElevenLabs TTS")
+        voice_id = os.getenv("ELEVEN_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+        return elevenlabs.TTS(voice_id=voice_id)
     
     # Default to OpenAI
     logger.info("Using OpenAI TTS")
@@ -54,11 +62,11 @@ class TransferFunctions(llm.ToolContext):
         self.phone_number = phone_number
 
     @llm.function_tool(description="Transfer the call to a human support agent or another phone number.")
-    async def transfer_call(self, destination: Optional[str] = None):
+    async def transfer_call(self, destination: Annotated[str, "The destination phone number to transfer the call to."] = os.getenv("TRANSFER_DESTINATION_NUMBER", "")):
         """
         Transfer the call.
         """
-        if destination is None:
+        if not destination:
             destination = os.getenv("DEFAULT_TRANSFER_NUMBER")
             if not destination:
                  return "Error: No default transfer number configured."
@@ -120,13 +128,13 @@ class OutboundAssistant(Agent):
     def __init__(self) -> None:
         super().__init__(
             instructions="""
-            You are a helpful and professional voice assistant calling from Vobiz.
+            You are a helpful and professional voice assistant calling from Cubemoon.
             
             Key behaviors:
-            1. Introduce yourself clearly when the user answers.
-            2. Be concise and respect the user's time.
-            3. If asked, explain you are an AI assistant helping with a test call.
-            4. If the user asks to be transferred, call the transfer_call tool immediately.
+            1. Introduce yourself clearly as the 'Cubemoon Voice Assistant' when the user answers.
+            2. Be professional, concise, and respect the user's time.
+            3. Explain that you are an AI assistant from Cubemoon helping with digital solutions and test inquiries.
+            4. If the user asks to be transferred to a human, call the transfer_call tool immediately.
                If no number is specified, do NOT ask for one; just call the tool with the default.
             """
         )
@@ -159,11 +167,57 @@ async def entrypoint(ctx: agents.JobContext):
     # Initialize the Agent Session with plugins
 
     session = AgentSession(
-        stt=deepgram.STT(model="nova-3", language="multi"),
+        stt=openai.STT(),
+        vad=silero.VAD.load(),
         llm=openai.LLM(model="gpt-4o-mini"),
         tts=_build_tts(),
-        tools=fnc_ctx.all_tools,
+        tools=fnc_ctx.flatten(),
     )
+
+    # --- Conversation Logging ---
+    conversation_history = []
+    
+    @session.on("user_transcript_finished")
+    def on_user_transcript(event: agents.stt.SpeechEvent):
+        if event.alternatives:
+            text = event.alternatives[0].text
+            conversation_history.append({
+                "role": "human",
+                "text": text,
+                "timestamp": datetime.now().isoformat()
+            })
+            logger.info(f"Transcript (Human): {text}")
+
+    @session.on("agent_transcript_finished")
+    def on_agent_transcript(text: str):
+        conversation_history.append({
+            "role": "ai",
+            "text": text,
+            "timestamp": datetime.now().isoformat()
+        })
+        logger.info(f"Transcript (AI): {text}")
+
+    def save_conversation():
+        if not conversation_history:
+             return
+             
+        if not os.path.exists("recordings"):
+            os.makedirs("recordings")
+            
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_phone = str(phone_number).replace("+", "") if phone_number else "inbound"
+        filename = f"recordings/call_{safe_phone}_{timestamp}.json"
+        
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump({
+                "phone_number": phone_number,
+                "room_name": ctx.room.name,
+                "timestamp": timestamp,
+                "conversation": conversation_history
+            }, f, indent=4)
+        logger.info(f"Conversation saved to {filename}")
+
+    # --- End Conversation Logging ---
 
     # Start the session
     await session.start(
@@ -196,9 +250,10 @@ async def entrypoint(ctx: agents.JobContext):
             # OR we can speak immediately. 
             # If you want the agent to speak first, uncomment the lines below:
             
-            # await session.generate_reply(
-            #     instructions="The user has answered. Introduce yourself immediately."
-            # )
+            await session.generate_reply(
+                instructions="The user has answered. Introduce yourself immediately."
+            )
+            
             
         except Exception as e:
             logger.error(f"Failed to place outbound call: {e}")
@@ -208,6 +263,9 @@ async def entrypoint(ctx: agents.JobContext):
         # Fallback for inbound calls (if this agent is used for that)
         logger.info("No phone number in metadata. Treating as inbound/web call.")
         await session.generate_reply(instructions="Greet the user.")
+
+    # Save conversation when the session is over
+    save_conversation()
 
 
 if __name__ == "__main__":
