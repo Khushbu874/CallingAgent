@@ -89,10 +89,9 @@ async function triggerCall() {
 // Fetch and render call history list
 async function loadCalls() {
     const listContainer = document.getElementById("calls-list");
-    listContainer.innerHTML = `<div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i> Fetching recorded calls...</div>`;
 
     try {
-        const response = await fetch("/api/calls");
+        const response = await fetch(`/api/calls?t=${Date.now()}`, { cache: "no-store" });
         const data = await response.json();
 
         if (data.success) {
@@ -157,7 +156,7 @@ async function selectCall(callId) {
     chatMessages.innerHTML = `<div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i> Loading conversation transcript...</div>`;
 
     try {
-        const response = await fetch(`/api/calls/${callId}`);
+        const response = await fetch(`/api/calls/${callId}?t=${Date.now()}`, { cache: "no-store" });
         const data = await response.json();
 
         if (data.success && data.call) {

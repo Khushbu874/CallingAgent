@@ -239,7 +239,7 @@ async def entrypoint(ctx: agents.JobContext):
         })
         logger.info(f"Transcript (AI): {text}")
 
-    def save_conversation():
+    async def save_conversation():
         if not os.path.exists("recordings"):
             os.makedirs("recordings")
             
