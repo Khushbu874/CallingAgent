@@ -44,16 +44,20 @@ def _build_tts():
     
     if provider == "elevenlabs":
         logger.info("Using ElevenLabs TTS")
+        api_key = os.getenv("ELEVEN_API_KEY")
         voice_id = os.getenv("ELEVEN_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
-        return elevenlabs.TTS(voice_id=voice_id)
+        try:
+            # Try with multilingual model for best language support
+            return elevenlabs.TTS(api_key=api_key, voice_id=voice_id, model_id="eleven_multilingual_v2")
+        except TypeError:
+            # Fallback if the installed plugin version has different arguments
+            return elevenlabs.TTS(api_key=api_key, voice_id=voice_id)
     
     # Default to OpenAI
     logger.info("Using OpenAI TTS")
     model = os.getenv("OPENAI_TTS_MODEL", "tts-1")
     voice = os.getenv("OPENAI_TTS_VOICE", "alloy")
     return openai.TTS(model=model, voice=voice)
-
-
 
 class TransferFunctions(llm.ToolContext):
     def __init__(self, ctx: agents.JobContext, phone_number: str = None):
@@ -127,16 +131,22 @@ class OutboundAssistant(Agent):
     """
     def __init__(self) -> None:
         super().__init__(
-            instructions="""
-            You are a helpful and professional voice assistant calling from Cubemoon.
-            
-            Key behaviors:
-            1. Introduce yourself clearly as the 'Cubemoon Voice Assistant' when the user answers.
-            2. Be professional, concise, and respect the user's time.
-            3. Explain that you are an AI assistant from Cubemoon helping with digital solutions and test inquiries.
-            4. If the user asks to be transferred to a human, call the transfer_call tool immediately.
-               If no number is specified, do NOT ask for one; just call the tool with the default.
-            """
+            instructions=(
+                "You are 'TrinityAI', a professional and friendly female voice assistant representing 'Trinity Solutions', Raipur (Chhattisgarh). "
+                "Your goal is to help businesses with IT and Software solutions. "
+                "\n\nCOMPANY KNOWLEDGE:\n"
+                "- SERVICES: Custom Software Development, ERP Solutions, Web & Mobile App Development, Bulk SMS, Bulk WhatsApp API, and Digital Marketing.\n"
+                "- ERP PRODUCTS: TMS (Transport Management), IMS (Institute Management), SMS (School Management), Inventory, and Hospital/Clinic Management Software.\n"
+                "- TAGLINE: 'Central India's best software company'.\n"
+                "- LOCATION: Head office is in Raipur (Maheshwari Tower, Kailashpuri).\n"
+                "\nCRITICAL STYLE RULES:\n"
+                "1. FEMALE PERSONA: Always speak as a female. In Hindi/Hinglish, use feminine verb endings (e.g., 'bol rahi hoon', 'kar sakti hoon').\n"
+                "2. NATURAL CONVERSATION: Speak like a real human. Use fillers like 'Hmm...', 'Theek hai', 'Actually...', 'I see'.\n"
+                "3. HINGLISH: Respond in CONVERSATIONAL HINGLISH. Use English words mixed with Hindi. Avoid formal/shuddh Hindi.\n"
+                "4. SCRIPT: Always write response in ROMAN SCRIPT (English letters). NEVER use Devanagari/Hindi script.\n"
+                "5. LANGUAGE MIRRORING: If user speaks English, respond in English. If they speak Hinglish, respond in Hinglish.\n"
+                "6. NEXT STEPS: If a user is interested in a demo or service, explain briefly and offer to transfer the call to a human expert using 'transfer_call'."
+            ),
         )
 
 
@@ -167,7 +177,7 @@ async def entrypoint(ctx: agents.JobContext):
     # Initialize the Agent Session with plugins
 
     session = AgentSession(
-        stt=openai.STT(),
+        stt=openai.STT(language="hi"),
         vad=silero.VAD.load(),
         llm=openai.LLM(model="gpt-4o-mini"),
         tts=_build_tts(),
