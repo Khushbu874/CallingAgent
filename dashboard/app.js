@@ -2,7 +2,7 @@
 let allCalls = [];
 let activeCallId = null;
 let pollTimer = null;
-let wasCallActive = false;
+let activeLiveCallId = null;
 
 // Initialize Dashboard on Load
 document.addEventListener("DOMContentLoaded", () => {
@@ -15,10 +15,10 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Auto poll every 2.5 seconds for real-time live chat updates
+    // Auto poll every 1.5 seconds for real-time live chat updates
     pollTimer = setInterval(() => {
         loadCalls(true);
-    }, 2500);
+    }, 1500);
 });
 
 // Prefill phone number helper
@@ -47,10 +47,12 @@ async function triggerCall() {
         return;
     }
 
-    // UI Loading State
+    // UI Dispatching State
     statusBox.classList.remove("hidden");
     statusTitle.textContent = "Dispatching Outbound AI Call...";
     statusDesc.textContent = `Connecting LiveKit Cloud to dial ${countryCode} ${phoneNumber}...`;
+    statusBox.style.borderColor = "#6366f1";
+    statusBox.style.background = "rgba(99, 102, 241, 0.15)";
     callBtn.disabled = true;
 
     try {
@@ -66,16 +68,15 @@ async function triggerCall() {
         const result = await response.json();
 
         if (result.success) {
-            wasCallActive = true;
-            statusTitle.textContent = "Call Active 🔴";
-            statusDesc.textContent = `Target: ${result.phone_number} | Live audio & transcript tracking...`;
-            statusBox.style.borderColor = "#ef4444";
-            statusBox.style.background = "rgba(239, 68, 68, 0.15)";
+            statusTitle.textContent = "Connecting Call... 🚀";
+            statusDesc.textContent = `Target: ${result.phone_number} | Waiting for caller to pick up...`;
+            statusBox.style.borderColor = "#6366f1";
+            statusBox.style.background = "rgba(99, 102, 241, 0.15)";
             
             // Auto reload call history immediately
             setTimeout(() => {
-                loadCalls();
-            }, 1000);
+                loadCalls(true);
+            }, 800);
         } else {
             statusTitle.textContent = "Call Dispatch Failed";
             statusDesc.textContent = result.error || "Could not connect to LiveKit Gateway.";
@@ -106,33 +107,53 @@ async function loadCalls(isSilent = false) {
             allCalls = data.calls || [];
             renderCallsList(allCalls);
 
-            // Check if there is an active live call
-            const hasLiveCall = allCalls.some(c => c.status === "In Progress (Live)" || c.id.startsWith("live_"));
+            // Find if there is an active live call
+            const liveCall = allCalls.find(c => c.status === "In Progress (Live)" || c.id.startsWith("live_"));
             const statusBox = document.getElementById("call-status");
             const statusTitle = document.getElementById("status-title");
             const statusDesc = document.getElementById("status-desc");
 
-            if (!hasLiveCall && wasCallActive) {
-                // Call just completed
-                wasCallActive = false;
+            if (liveCall) {
+                // A call is actively live right now
+                activeLiveCallId = liveCall.id;
                 if (statusBox) {
-                    statusTitle.textContent = "Call Ended & Saved 🟢";
-                    statusDesc.textContent = "Transcript recording saved successfully!";
-                    statusBox.style.borderColor = "#10b981";
-                    statusBox.style.background = "rgba(16, 185, 129, 0.15)";
-                    setTimeout(() => {
-                        statusBox.classList.add("hidden");
-                    }, 4000);
+                    statusBox.classList.remove("hidden");
+                    statusTitle.textContent = "Live Call Active 🔴";
+                    statusDesc.textContent = `Target: ${liveCall.phone_number} | Real-time speech tracking...`;
+                    statusBox.style.borderColor = "#ef4444";
+                    statusBox.style.background = "rgba(239, 68, 68, 0.15)";
                 }
-            }
 
-            // Automatically select first call if available and none selected
-            if (allCalls.length > 0 && !activeCallId) {
-                activeCallId = allCalls[0].id;
-                selectCall(allCalls[0].id, isSilent);
-            } else if (activeCallId) {
-                // If a call is selected, update its transcript live
-                selectCall(activeCallId, true);
+                // Automatically switch view to the live call so transcripts appear in real-time
+                if (activeCallId !== liveCall.id) {
+                    activeCallId = liveCall.id;
+                    selectCall(liveCall.id, true);
+                } else {
+                    selectCall(activeCallId, true);
+                }
+            } else {
+                // No live call right now
+                if (activeLiveCallId) {
+                    // A call WAS live and just completed!
+                    activeLiveCallId = null;
+                    if (statusBox) {
+                        statusTitle.textContent = "Call Completed & Saved 🟢";
+                        statusDesc.textContent = "Transcript recording saved successfully!";
+                        statusBox.style.borderColor = "#10b981";
+                        statusBox.style.background = "rgba(16, 185, 129, 0.15)";
+                        setTimeout(() => {
+                            statusBox.classList.add("hidden");
+                        }, 4000);
+                    }
+                }
+
+                // Select first completed call if none selected
+                if (allCalls.length > 0 && !activeCallId) {
+                    activeCallId = allCalls[0].id;
+                    selectCall(allCalls[0].id, isSilent);
+                } else if (activeCallId) {
+                    selectCall(activeCallId, true);
+                }
             }
         }
     } catch (err) {

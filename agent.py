@@ -240,27 +240,45 @@ async def entrypoint(ctx: agents.JobContext):
         except Exception as err:
             logger.warning(f"Failed to update live transcript file: {err}")
     
+    @session.on("conversation_item_added")
+    def on_conversation_item_added(ev: agents.ConversationItemAddedEvent):
+        item = ev.item
+        if hasattr(item, "role") and item.role in ("user", "assistant"):
+            role_label = "human" if item.role == "user" else "ai"
+            text = item.text_content or ""
+            if text:
+                if not conversation_history or conversation_history[-1]["text"] != text:
+                    conversation_history.append({
+                        "role": role_label,
+                        "text": text,
+                        "timestamp": datetime.now().strftime("%H:%M:%S")
+                    })
+                    logger.info(f"Live Transcript ({role_label.upper()}): {text}")
+                    update_live_file()
+
     @session.on("user_transcript_finished")
     def on_user_transcript(event: agents.stt.SpeechEvent):
         if event.alternatives:
             text = event.alternatives[0].text
-            conversation_history.append({
-                "role": "human",
-                "text": text,
-                "timestamp": datetime.now().strftime("%H:%M:%S")
-            })
-            logger.info(f"Transcript (Human): {text}")
-            update_live_file()
+            if not conversation_history or conversation_history[-1]["text"] != text:
+                conversation_history.append({
+                    "role": "human",
+                    "text": text,
+                    "timestamp": datetime.now().strftime("%H:%M:%S")
+                })
+                logger.info(f"Transcript (Human): {text}")
+                update_live_file()
 
     @session.on("agent_transcript_finished")
     def on_agent_transcript(text: str):
-        conversation_history.append({
-            "role": "ai",
-            "text": text,
-            "timestamp": datetime.now().strftime("%H:%M:%S")
-        })
-        logger.info(f"Transcript (AI): {text}")
-        update_live_file()
+        if not conversation_history or conversation_history[-1]["text"] != text:
+            conversation_history.append({
+                "role": "ai",
+                "text": text,
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            })
+            logger.info(f"Transcript (AI): {text}")
+            update_live_file()
 
     async def save_conversation():
         if not os.path.exists("recordings"):
@@ -332,6 +350,7 @@ async def entrypoint(ctx: agents.JobContext):
 
     if phone_number:
         logger.info(f"Initiating outbound SIP call to {phone_number}...")
+        update_live_file()
         try:
             # Create a SIP participant to dial out
             # This effectively "calls" the phone number and brings them into this room
