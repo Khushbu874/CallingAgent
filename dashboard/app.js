@@ -2,6 +2,7 @@
 let allCalls = [];
 let activeCallId = null;
 let pollTimer = null;
+let wasCallActive = false;
 
 // Initialize Dashboard on Load
 document.addEventListener("DOMContentLoaded", () => {
@@ -65,10 +66,11 @@ async function triggerCall() {
         const result = await response.json();
 
         if (result.success) {
-            statusTitle.textContent = "Call Dispatched! Live Tracking Active 🔴";
-            statusDesc.textContent = `Target: ${result.phone_number} | Watch live transcript below!`;
-            statusBox.style.borderColor = "#10b981";
-            statusBox.style.background = "rgba(16, 185, 129, 0.15)";
+            wasCallActive = true;
+            statusTitle.textContent = "Call Active 🔴";
+            statusDesc.textContent = `Target: ${result.phone_number} | Live audio & transcript tracking...`;
+            statusBox.style.borderColor = "#ef4444";
+            statusBox.style.background = "rgba(239, 68, 68, 0.15)";
             
             // Auto reload call history immediately
             setTimeout(() => {
@@ -103,6 +105,26 @@ async function loadCalls(isSilent = false) {
         if (data.success) {
             allCalls = data.calls || [];
             renderCallsList(allCalls);
+
+            // Check if there is an active live call
+            const hasLiveCall = allCalls.some(c => c.status === "In Progress (Live)" || c.id.startsWith("live_"));
+            const statusBox = document.getElementById("call-status");
+            const statusTitle = document.getElementById("status-title");
+            const statusDesc = document.getElementById("status-desc");
+
+            if (!hasLiveCall && wasCallActive) {
+                // Call just completed
+                wasCallActive = false;
+                if (statusBox) {
+                    statusTitle.textContent = "Call Ended & Saved 🟢";
+                    statusDesc.textContent = "Transcript recording saved successfully!";
+                    statusBox.style.borderColor = "#10b981";
+                    statusBox.style.background = "rgba(16, 185, 129, 0.15)";
+                    setTimeout(() => {
+                        statusBox.classList.add("hidden");
+                    }, 4000);
+                }
+            }
 
             // Automatically select first call if available and none selected
             if (allCalls.length > 0 && !activeCallId) {
