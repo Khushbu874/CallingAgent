@@ -5,7 +5,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from livekit import agents, api
-from livekit.agents import AgentSession, Agent, RoomInputOptions
+from livekit.agents import AgentSession, Agent, RoomOptions
 from livekit.plugins import (
     openai,
     cartesia,
@@ -233,7 +233,7 @@ async def entrypoint(ctx: agents.JobContext):
     await session.start(
         room=ctx.room,
         agent=OutboundAssistant(),
-        room_input_options=RoomInputOptions(
+        room_options=RoomOptions(
             noise_cancellation=noise_cancellation.BVCTelephony(),
             close_on_disconnect=True, # Close room when agent disconnects
         ),
@@ -255,14 +255,8 @@ async def entrypoint(ctx: agents.JobContext):
             )
             logger.info("Call answered! Agent is now listening.")
             
-            # Note: We do NOT generate an initial reply here immediately.
-            # Usually for outbound, we want to hear "Hello?" from the user first,
-            # OR we can speak immediately. 
-            # If you want the agent to speak first, uncomment the lines below:
-            
-            await session.generate_reply(
-                instructions="The user has answered. Introduce yourself immediately."
-            )
+            # Speak initial intro greeting when user answers
+            await session.generate_reply()
             
             
         except Exception as e:
