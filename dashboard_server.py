@@ -60,6 +60,8 @@ def initiate_call():
     else:
         # Strip leading zeros if present
         clean_num = clean_num.lstrip("0")
+        if len(clean_num) != 10:
+            return jsonify({"success": False, "error": "Phone number must be exactly 10 digits."}), 400
         phone_number = f"{country_code}{clean_num}"
 
     url = os.getenv("LIVEKIT_URL")

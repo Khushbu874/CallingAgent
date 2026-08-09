@@ -9,20 +9,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Prefill phone number helper
 function prefillNumber(number) {
-    document.getElementById("phone-number").value = number;
+    const input = document.getElementById("phone-number");
+    input.value = number.replace(/[^0-9]/g, '').slice(0, 10);
 }
+
+// Ensure phone number input only accepts digits and max 10 characters
+document.addEventListener("DOMContentLoaded", () => {
+    loadCalls();
+    
+    const phoneInput = document.getElementById("phone-number");
+    if (phoneInput) {
+        phoneInput.addEventListener("input", (e) => {
+            e.target.value = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
+        });
+    }
+});
 
 // Trigger Outbound AI Call
 async function triggerCall() {
     const countryCode = document.getElementById("country-code").value;
-    const phoneNumber = document.getElementById("phone-number").value.trim();
+    const phoneNumber = document.getElementById("phone-number").value.trim().replace(/[^0-9]/g, '');
     const statusBox = document.getElementById("call-status");
     const statusTitle = document.getElementById("status-title");
     const statusDesc = document.getElementById("status-desc");
     const callBtn = document.getElementById("call-btn");
 
-    if (!phoneNumber) {
-        alert("Please enter a valid phone number!");
+    if (!phoneNumber || phoneNumber.length !== 10) {
+        statusBox.classList.remove("hidden");
+        statusTitle.textContent = "Invalid Mobile Number";
+        statusDesc.textContent = "Please enter an exact 10-digit mobile number (e.g., 9302474642).";
+        statusBox.style.borderColor = "#ef4444";
+        statusBox.style.background = "rgba(239, 68, 68, 0.15)";
         return;
     }
 

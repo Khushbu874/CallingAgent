@@ -64,7 +64,7 @@
                             <label for="phone-number"><i class="fa-solid fa-mobile-screen-button"></i> Mobile / Phone Number</label>
                             <div class="input-with-icon">
                                 <i class="fa-solid fa-phone input-icon"></i>
-                                <input type="tel" id="phone-number" class="form-control" placeholder="Enter 10-digit number (e.g. 9302474642)" required autocomplete="off">
+                                <input type="tel" id="phone-number" class="form-control" placeholder="Enter 10-digit number (e.g. 9302474642)" maxlength="10" minlength="10" pattern="[0-9]{10}" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10);" required autocomplete="off">
                             </div>
                         </div>
 
