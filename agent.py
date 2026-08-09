@@ -100,22 +100,22 @@ class TransferFunctions(llm.ToolContext):
         """
         Transfer the call.
         """
-        if not destination:
-            destination = os.getenv("DEFAULT_TRANSFER_NUMBER")
-            if not destination:
-                 return "Error: No default transfer number configured."
+        default_num = os.getenv("DEFAULT_TRANSFER_NUMBER", "+919302474642")
+        clean_digits = "".join(filter(str.isdigit, str(destination)))
+        
+        # If destination is empty or not a valid phone number (e.g., 'human support agent'), use default transfer number
+        if not destination or len(clean_digits) < 5:
+            destination = default_num
+
         if "@" not in destination:
             # If no domain is provided, append the SIP domain
+            clean_dest = destination.replace("tel:", "").replace("sip:", "")
             if SIP_DOMAIN:
-                # Ensure clean number (strip tel: or sip: prefix if present but no domain)
-                clean_dest = destination.replace("tel:", "").replace("sip:", "")
                 destination = f"sip:{clean_dest}@{SIP_DOMAIN}"
             else:
-                # Fallback to tel URI if no domain configured
-                if not destination.startswith("tel:") and not destination.startswith("sip:"):
-                     destination = f"tel:{destination}"
+                destination = f"tel:{clean_dest}"
         elif not destination.startswith("sip:"):
-             destination = f"sip:{destination}"
+            destination = f"sip:{destination}"
         
         logger.info(f"Transferring call to {destination}")
         
