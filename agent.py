@@ -17,6 +17,35 @@ from livekit.plugins import (
 from livekit.agents import llm
 from livekit.agents.llm.chat_context import Instructions
 from typing import Annotated, Optional
+import livekit.agents.llm.chat_context as cc
+from pydantic_core import core_schema
+
+# Fix livekit-agents 1.5.8 Pydantic serialization bug for ChatMessage/Instructions
+@classmethod
+def _patched_instructions_pydantic_schema(cls, source_type, handler):
+    def validate_python(v):
+        if isinstance(v, cc.Instructions):
+            return v
+        if isinstance(v, dict) and v.get('type') == 'instructions':
+            return cls(v['audio'], text=v.get('text'))
+        return cls(v)
+        
+    def serialize(v):
+        if hasattr(v, '_audio_variant'):
+            d = {'type': 'instructions', 'audio': v.audio}
+            if v._text_variant is not None:
+                d['text'] = v._text_variant
+            return d
+        return str(v)
+        
+    return core_schema.json_or_python_schema(
+        python_schema=core_schema.no_info_plain_validator_function(validate_python),
+        json_schema=core_schema.no_info_plain_validator_function(validate_python),
+        serialization=core_schema.plain_serializer_function_ser_schema(serialize, info_arg=False),
+    )
+
+cc.Instructions.__get_pydantic_core_schema__ = _patched_instructions_pydantic_schema
+cc.ChatMessage.model_rebuild(force=True)
 
 # Load environment variables
 load_dotenv(".env")
