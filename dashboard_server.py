@@ -117,8 +117,12 @@ def get_calls():
                 except Exception as e:
                     print(f"Error reading {fname}: {e}")
 
-    # Sort calls by timestamp/filename descending (newest first)
-    calls.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    # Sort calls by status (live first), then timestamp/filename descending
+    def call_sort_key(x):
+        is_live = 1 if x.get("id", "").startswith("live_") or x.get("status") == "In Progress (Live)" else 0
+        return (is_live, x.get("timestamp", ""))
+
+    calls.sort(key=call_sort_key, reverse=True)
     return jsonify({"success": True, "calls": calls})
 
 @app.route("/api/calls/<call_id>", methods=["GET"])

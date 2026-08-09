@@ -1,19 +1,9 @@
 // Global state
 let allCalls = [];
 let activeCallId = null;
+let pollTimer = null;
 
 // Initialize Dashboard on Load
-document.addEventListener("DOMContentLoaded", () => {
-    loadCalls();
-});
-
-// Prefill phone number helper
-function prefillNumber(number) {
-    const input = document.getElementById("phone-number");
-    input.value = number.replace(/[^0-9]/g, '').slice(0, 10);
-}
-
-// Ensure phone number input only accepts digits and max 10 characters
 document.addEventListener("DOMContentLoaded", () => {
     loadCalls();
     
@@ -23,7 +13,20 @@ document.addEventListener("DOMContentLoaded", () => {
             e.target.value = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
         });
     }
+
+    // Auto poll every 2.5 seconds for real-time live chat updates
+    pollTimer = setInterval(() => {
+        loadCalls(true);
+    }, 2500);
 });
+
+// Prefill phone number helper
+function prefillNumber(number) {
+    const input = document.getElementById("phone-number");
+    if (input) {
+        input.value = number.replace(/[^0-9]/g, '').slice(0, 10);
+    }
+}
 
 // Trigger Outbound AI Call
 async function triggerCall() {
@@ -62,15 +65,15 @@ async function triggerCall() {
         const result = await response.json();
 
         if (result.success) {
-            statusTitle.textContent = "Call Dispatched Successfully! 🚀";
-            statusDesc.textContent = `Target: ${result.phone_number} | Dispatch ID: ${result.dispatch_id}`;
+            statusTitle.textContent = "Call Dispatched! Live Tracking Active 🔴";
+            statusDesc.textContent = `Target: ${result.phone_number} | Watch live transcript below!`;
             statusBox.style.borderColor = "#10b981";
             statusBox.style.background = "rgba(16, 185, 129, 0.15)";
             
-            // Auto reload call history after 6 seconds to capture new call
+            // Auto reload call history immediately
             setTimeout(() => {
                 loadCalls();
-            }, 6000);
+            }, 1000);
         } else {
             statusTitle.textContent = "Call Dispatch Failed";
             statusDesc.textContent = result.error || "Could not connect to LiveKit Gateway.";
@@ -86,9 +89,12 @@ async function triggerCall() {
     }
 }
 
-// Fetch and render call history list
-async function loadCalls() {
+// Fetch and render call history list (isSilent = true avoids full spinner flicker)
+async function loadCalls(isSilent = false) {
     const listContainer = document.getElementById("calls-list");
+    if (!isSilent && listContainer.children.length === 0) {
+        listContainer.innerHTML = `<div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i> Fetching recorded calls...</div>`;
+    }
 
     try {
         const response = await fetch(`/api/calls?t=${Date.now()}`, { cache: "no-store" });
@@ -100,13 +106,17 @@ async function loadCalls() {
 
             // Automatically select first call if available and none selected
             if (allCalls.length > 0 && !activeCallId) {
-                selectCall(allCalls[0].id);
+                activeCallId = allCalls[0].id;
+                selectCall(allCalls[0].id, isSilent);
+            } else if (activeCallId) {
+                // If a call is selected, update its transcript live
+                selectCall(activeCallId, true);
             }
-        } else {
-            listContainer.innerHTML = `<div class="loading-spinner">Failed to load calls: ${data.error}</div>`;
         }
     } catch (err) {
-        listContainer.innerHTML = `<div class="loading-spinner">Error connecting to server backend.</div>`;
+        if (!isSilent) {
+            listContainer.innerHTML = `<div class="loading-spinner">Error connecting to server backend.</div>`;
+        }
     }
 }
 
@@ -126,13 +136,19 @@ function renderCallsList(calls) {
 
     listContainer.innerHTML = calls.map(call => {
         const isActive = call.id === activeCallId ? "active" : "";
+        const isLive = call.status === "In Progress (Live)" || call.id.startsWith("live_");
         const formattedDate = call.date || call.timestamp || "Recent Call";
         const msgCount = call.total_messages || (call.conversation ? call.conversation.length : 0);
+
+        const statusBadge = isLive 
+            ? `<span class="tag live-tag" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border-color: rgba(239, 68, 68, 0.4);"><i class="fa-solid fa-circle" style="font-size: 8px; animation: pulse 1s infinite;"></i> LIVE</span>`
+            : `<span class="tag" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: rgba(16, 185, 129, 0.3);">Done</span>`;
 
         return `
             <div class="call-item ${isActive}" onclick="selectCall('${call.id}')">
                 <div class="call-item-header">
                     <span class="call-item-phone"><i class="fa-solid fa-phone"></i> ${escapeHtml(call.phone_number)}</span>
+                    ${statusBadge}
                 </div>
                 <div class="call-item-meta">
                     <span class="call-item-date"><i class="fa-regular fa-clock"></i> ${escapeHtml(formattedDate)}</span>
@@ -144,16 +160,17 @@ function renderCallsList(calls) {
 }
 
 // Select a call and render its chat transcript
-async function selectCall(callId) {
+async function selectCall(callId, isSilent = false) {
     activeCallId = callId;
-    renderCallsList(allCalls); // Update active highlighting
 
     const chatHeader = document.getElementById("chat-header");
     const chatMessages = document.getElementById("chat-messages");
     const chatPhone = document.getElementById("chat-phone");
     const chatDate = document.getElementById("chat-date");
 
-    chatMessages.innerHTML = `<div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i> Loading conversation transcript...</div>`;
+    if (!isSilent && chatMessages.children.length === 0) {
+        chatMessages.innerHTML = `<div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i> Loading conversation transcript...</div>`;
+    }
 
     try {
         const response = await fetch(`/api/calls/${callId}?t=${Date.now()}`, { cache: "no-store" });
@@ -161,9 +178,16 @@ async function selectCall(callId) {
 
         if (data.success && data.call) {
             const call = data.call;
+            const isLive = call.status === "In Progress (Live)" || call.id.startsWith("live_");
+
             chatHeader.classList.remove("hidden");
+            
+            const liveBadge = isLive 
+                ? `<span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4);"><i class="fa-solid fa-circle-dot" style="animation: pulse 1s infinite;"></i> Live Call In Progress</span>`
+                : `<span class="badge badge-success"><i class="fa-solid fa-check"></i> Completed</span>`;
+
             chatPhone.innerHTML = `<i class="fa-solid fa-headset"></i> ${escapeHtml(call.phone_number)}`;
-            chatDate.innerHTML = `<i class="fa-regular fa-clock"></i> ${escapeHtml(call.date || call.timestamp || "")}`;
+            chatDate.innerHTML = `<i class="fa-regular fa-clock"></i> ${escapeHtml(call.date || call.timestamp || "")} ${liveBadge}`;
 
             const conversation = call.conversation || [];
 
@@ -171,8 +195,8 @@ async function selectCall(callId) {
                 chatMessages.innerHTML = `
                     <div class="empty-state">
                         <i class="fa-solid fa-comment-slash empty-icon"></i>
-                        <h3>No Speech Recorded</h3>
-                        <p>This call ended before any speech transcripts were captured.</p>
+                        <h3>Listening for speech...</h3>
+                        <p>${isLive ? "Call connected! Transcripts will appear live as speaker talks." : "This call ended with no speech transcripts recorded."}</p>
                     </div>
                 `;
                 return;
@@ -202,13 +226,13 @@ async function selectCall(callId) {
                 `;
             }).join("");
 
-            // Auto scroll chat to bottom
+            // Auto scroll chat to bottom on new messages
             chatMessages.scrollTop = chatMessages.scrollHeight;
-        } else {
-            chatMessages.innerHTML = `<div class="empty-state"><p>Error loading transcript: ${data.error}</p></div>`;
         }
     } catch (err) {
-        chatMessages.innerHTML = `<div class="empty-state"><p>Failed to connect to server.</p></div>`;
+        if (!isSilent) {
+            chatMessages.innerHTML = `<div class="empty-state"><p>Failed to connect to server.</p></div>`;
+        }
     }
 }
 

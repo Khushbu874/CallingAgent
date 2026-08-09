@@ -219,6 +219,27 @@ async def entrypoint(ctx: agents.JobContext):
     # --- Conversation Logging ---
     conversation_history = []
     
+    def update_live_file():
+        """Helper to write real-time live conversation state while call is active."""
+        if not os.path.exists("recordings"):
+            os.makedirs("recordings")
+        safe_phone = str(phone_number).replace("+", "") if phone_number else "inbound"
+        live_filename = f"recordings/live_{safe_phone}.json"
+        try:
+            with open(live_filename, "w", encoding="utf-8") as f:
+                json.dump({
+                    "id": f"live_{safe_phone}",
+                    "phone_number": phone_number or "Unknown",
+                    "room_name": ctx.room.name,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "status": "In Progress (Live)",
+                    "total_messages": len(conversation_history),
+                    "conversation": conversation_history
+                }, f, indent=4, ensure_ascii=False)
+        except Exception as err:
+            logger.warning(f"Failed to update live transcript file: {err}")
+    
     @session.on("user_transcript_finished")
     def on_user_transcript(event: agents.stt.SpeechEvent):
         if event.alternatives:
@@ -226,18 +247,20 @@ async def entrypoint(ctx: agents.JobContext):
             conversation_history.append({
                 "role": "human",
                 "text": text,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().strftime("%H:%M:%S")
             })
             logger.info(f"Transcript (Human): {text}")
+            update_live_file()
 
     @session.on("agent_transcript_finished")
     def on_agent_transcript(text: str):
         conversation_history.append({
             "role": "ai",
             "text": text,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().strftime("%H:%M:%S")
         })
         logger.info(f"Transcript (AI): {text}")
+        update_live_file()
 
     async def save_conversation():
         if not os.path.exists("recordings"):
@@ -248,6 +271,7 @@ async def entrypoint(ctx: agents.JobContext):
         safe_phone = str(phone_number).replace("+", "") if phone_number else "inbound"
         call_id = f"call_{safe_phone}_{timestamp}"
         filename = f"recordings/{call_id}.json"
+        live_filename = f"recordings/live_{safe_phone}.json"
         
         chat_list = []
         if hasattr(session, "history") and session.history and session.history.items:
@@ -270,6 +294,13 @@ async def entrypoint(ctx: agents.JobContext):
         if not chat_list and conversation_history:
             chat_list = conversation_history
 
+        # Remove temporary live file if present
+        if os.path.exists(live_filename):
+            try:
+                os.remove(live_filename)
+            except Exception:
+                pass
+
         if not chat_list:
             logger.info("No transcript entries recorded to save.")
             return
@@ -281,6 +312,7 @@ async def entrypoint(ctx: agents.JobContext):
                 "room_name": ctx.room.name,
                 "timestamp": formatted_date,
                 "date": formatted_date,
+                "status": "Completed",
                 "total_messages": len(chat_list),
                 "conversation": chat_list
             }, f, indent=4, ensure_ascii=False)
