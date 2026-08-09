@@ -240,23 +240,50 @@ async def entrypoint(ctx: agents.JobContext):
         logger.info(f"Transcript (AI): {text}")
 
     def save_conversation():
-        if not conversation_history:
-             return
-             
         if not os.path.exists("recordings"):
             os.makedirs("recordings")
             
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        formatted_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         safe_phone = str(phone_number).replace("+", "") if phone_number else "inbound"
-        filename = f"recordings/call_{safe_phone}_{timestamp}.json"
+        call_id = f"call_{safe_phone}_{timestamp}"
+        filename = f"recordings/{call_id}.json"
         
+        chat_list = []
+        if hasattr(session, "history") and session.history and session.history.items:
+            for item in session.history.items:
+                if hasattr(item, "role") and item.role in ("user", "assistant"):
+                    role_label = "human" if item.role == "user" else "ai"
+                    text = item.text_content or ""
+                    if text:
+                        item_time = (
+                            datetime.fromtimestamp(item.created_at).strftime("%H:%M:%S")
+                            if hasattr(item, "created_at") and item.created_at
+                            else datetime.now().strftime("%H:%M:%S")
+                        )
+                        chat_list.append({
+                            "role": role_label,
+                            "text": text,
+                            "timestamp": item_time
+                        })
+
+        if not chat_list and conversation_history:
+            chat_list = conversation_history
+
+        if not chat_list:
+            logger.info("No transcript entries recorded to save.")
+            return
+
         with open(filename, "w", encoding="utf-8") as f:
             json.dump({
-                "phone_number": phone_number,
+                "id": call_id,
+                "phone_number": phone_number or "Unknown",
                 "room_name": ctx.room.name,
-                "timestamp": timestamp,
-                "conversation": conversation_history
-            }, f, indent=4)
+                "timestamp": formatted_date,
+                "date": formatted_date,
+                "total_messages": len(chat_list),
+                "conversation": chat_list
+            }, f, indent=4, ensure_ascii=False)
         logger.info(f"Conversation saved to {filename}")
 
     # --- End Conversation Logging ---

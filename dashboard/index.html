@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trinity AI - Outbound Calling & Chat Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar / Navigation Header -->
+        <header class="navbar">
+            <div class="brand">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-phone-volume"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>Trinity<span>AI</span></h1>
+                    <p>Outbound Voice & Transcript Console</p>
+                </div>
+            </div>
+            <div class="nav-badges">
+                <span class="badge livekit"><i class="fa-solid fa-bolt"></i> LiveKit Cloud</span>
+                <span class="badge vobiz"><i class="fa-solid fa-signal"></i> Vobiz SIP</span>
+                <span class="badge status-online"><i class="fa-solid fa-circle"></i> System Ready</span>
+            </div>
+        </header>
+
+        <!-- Main Layout Grid -->
+        <main class="dashboard-grid">
+            
+            <!-- Left Panel: Dialer & New Call Dispatch -->
+            <section class="card dialer-card">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-paper-plane"></i> Initiate Outbound Call</h2>
+                    <span class="tag">AI Dispatch</span>
+                </div>
+                <div class="card-body">
+                    <form id="call-form" onsubmit="event.preventDefault(); triggerCall();">
+                        <div class="form-group">
+                            <label for="country-code"><i class="fa-solid fa-earth-americas"></i> Select Country</label>
+                            <div class="custom-select-wrapper">
+                                <select id="country-code" class="form-control">
+                                    <option value="+91" selected>🇮🇳 India (+91)</option>
+                                    <option value="+1">🇺🇸 USA / Canada (+1)</option>
+                                    <option value="+44">🇬🇧 United Kingdom (+44)</option>
+                                    <option value="+971">🇦🇪 UAE (+971)</option>
+                                    <option value="+65">🇸🇬 Singapore (+65)</option>
+                                    <option value="+61">🇦🇺 Australia (+61)</option>
+                                    <option value="+49">🇩🇪 Germany (+49)</option>
+                                    <option value="+33">🇫🇷 France (+33)</option>
+                                </select>
+                                <i class="fa-solid fa-chevron-down select-arrow"></i>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="phone-number"><i class="fa-solid fa-mobile-screen-button"></i> Mobile / Phone Number</label>
+                            <div class="input-with-icon">
+                                <i class="fa-solid fa-phone input-icon"></i>
+                                <input type="tel" id="phone-number" class="form-control" placeholder="Enter 10-digit number (e.g. 9302474642)" required autocomplete="off">
+                            </div>
+                        </div>
+
+                        <!-- Quick Number Pre-fills -->
+                        <div class="quick-fills">
+                            <span>Quick Select:</span>
+                            <button type="button" class="chip" onclick="prefillNumber('9302474642')">+91 9302474642</button>
+                        </div>
+
+                        <button type="submit" id="call-btn" class="btn btn-primary btn-block">
+                            <i class="fa-solid fa-phone-flip"></i> Initiate Outbound AI Call
+                        </button>
+                    </form>
+
+                    <!-- Live Dispatch Status Notification -->
+                    <div id="call-status" class="call-status-box hidden">
+                        <div class="status-icon"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+                        <div class="status-content">
+                            <h4 id="status-title">Dispatching Call...</h4>
+                            <p id="status-desc">Connecting LiveKit Agent to SIP gateway.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Call History & Live Chat Transcript Viewer -->
+            <section class="card transcript-card">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-comments"></i> Call History & Transcripts</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-icon" onclick="loadCalls()" title="Refresh Transcripts">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card-body flex-layout">
+                    <!-- Search & Filter -->
+                    <div class="search-bar">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="search-input" placeholder="Search by phone number or keyword..." oninput="filterCalls()">
+                    </div>
+
+                    <!-- Split View: Left Call List, Right Chat Details -->
+                    <div class="split-view">
+                        <!-- Calls Sidebar List -->
+                        <div class="calls-list-container">
+                            <div id="calls-list" class="calls-list">
+                                <div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i> Loading recorded calls...</div>
+                            </div>
+                        </div>
+
+                        <!-- Chat Conversation Display -->
+                        <div class="chat-viewer">
+                            <div id="chat-header" class="chat-header hidden">
+                                <div class="chat-title-info">
+                                    <h3 id="chat-phone"><i class="fa-solid fa-user-gear"></i> +91 9302474642</h3>
+                                    <span id="chat-date" class="chat-timestamp"><i class="fa-regular fa-clock"></i> 2026-08-09 20:45:12</span>
+                                </div>
+                                <span class="badge badge-success"><i class="fa-solid fa-check"></i> Completed</span>
+                            </div>
+
+                            <div id="chat-messages" class="chat-messages">
+                                <div class="empty-state">
+                                    <i class="fa-solid fa-headset empty-icon"></i>
+                                    <h3>No Call Selected</h3>
+                                    <p>Select a call from the left list to view the full two-sided transcript recorded between AI and Human.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Trinity Solutions Voice Platform &copy; 2026. Powered by LiveKit Cloud & OpenAI API.</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
