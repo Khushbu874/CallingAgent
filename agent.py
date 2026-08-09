@@ -327,8 +327,8 @@ async def entrypoint(ctx: agents.JobContext):
         logger.info("No phone number in metadata. Treating as inbound/web call.")
         await session.generate_reply()
 
-    # Save conversation when the session is over
-    save_conversation()
+    # Register shutdown callback so conversation is saved when the call ends/disconnects
+    ctx.add_shutdown_callback(save_conversation)
 
 
 if __name__ == "__main__":
