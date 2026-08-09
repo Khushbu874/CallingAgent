@@ -5,7 +5,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 from livekit import agents, api
-from livekit.agents import AgentSession, Agent, RoomOptions
+from livekit.agents import AgentSession, Agent, RoomInputOptions
 from livekit.plugins import (
     openai,
     cartesia,
@@ -233,7 +233,7 @@ async def entrypoint(ctx: agents.JobContext):
     await session.start(
         room=ctx.room,
         agent=OutboundAssistant(),
-        room_options=RoomOptions(
+        room_input_options=RoomInputOptions(
             noise_cancellation=noise_cancellation.BVCTelephony(),
             close_on_disconnect=True, # Close room when agent disconnects
         ),
@@ -255,7 +255,7 @@ async def entrypoint(ctx: agents.JobContext):
             )
             logger.info("Call answered! Agent is now listening.")
             
-            # Speak initial intro greeting when user answers
+            # Speak initial intro greeting when call is answered
             await session.generate_reply()
             
             
@@ -266,7 +266,7 @@ async def entrypoint(ctx: agents.JobContext):
     else:
         # Fallback for inbound calls (if this agent is used for that)
         logger.info("No phone number in metadata. Treating as inbound/web call.")
-        await session.generate_reply(instructions="Greet the user.")
+        await session.generate_reply()
 
     # Save conversation when the session is over
     save_conversation()
