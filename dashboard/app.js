@@ -36,14 +36,13 @@ function toRomanEnglish(text) {
         const char = text[i];
         if (charMap[char] !== undefined) {
             result += charMap[char];
-        } else if (/[\u0250-\uFFFF]/.test(char)) {
-            // For unknown non-Latin chars (CJK, etc.), use code-point representation
-            result += "[" + char + "]";
         } else {
+            // For unrecognised chars (CJK etc.), keep them as-is
+            // New transcripts processed by agent.py anyascii won't reach this path
             result += char;
         }
     }
-    return result.replace(/\[(.)\]/g, ""); // Strip unrecognised non-latin blocks cleanly
+    return result;
 }
 
 // Initialize Dashboard on Load
