@@ -7,6 +7,26 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 from livekit import api
+import anyascii
+
+
+def ensure_roman_script(text: str) -> str:
+    """Converts ANY non-Latin script to Roman English using anyascii."""
+    if not text:
+        return ""
+    has_non_latin = any(ord(c) > 0x024F and not c.isascii() for c in text)
+    if has_non_latin:
+        return anyascii.anyascii(text)
+    return text
+
+
+def sanitize_call(data: dict) -> dict:
+    """Apply ensure_roman_script to every conversation message text in a call record."""
+    if "conversation" in data:
+        for msg in data["conversation"]:
+            if "text" in msg:
+                msg["text"] = ensure_roman_script(msg["text"])
+    return data
 
 # Load environment variables
 load_dotenv(".env")
@@ -110,6 +130,7 @@ def get_calls():
                 try:
                     with open(fpath, "r", encoding="utf-8") as f:
                         data = json.load(f)
+                        data = sanitize_call(data)
                         data["id"] = data.get("id", fname.replace(".json", ""))
                         data["filename"] = fname
                         data["total_messages"] = len(data.get("conversation", []))
@@ -137,6 +158,7 @@ def get_call_detail(call_id):
     try:
         with open(fpath, "r", encoding="utf-8") as f:
             data = json.load(f)
+            data = sanitize_call(data)
             data["id"] = call_id
             return jsonify({"success": True, "call": data})
     except Exception as e:
