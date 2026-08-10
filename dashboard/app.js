@@ -315,6 +315,12 @@ async function selectCall(callId, isSilent = false) {
                 return;
             }
 
+            // ── Smart scroll: capture state BEFORE innerHTML wipes scrollTop ──
+            const prevScrollTop = chatMessages.scrollTop;
+            const prevScrollHeight = chatMessages.scrollHeight;
+            const prevCount = chatMessages.dataset.msgCount ? parseInt(chatMessages.dataset.msgCount) : 0;
+            const isNearBottom = prevScrollHeight - prevScrollTop - chatMessages.clientHeight < 80;
+
             // Render two-sided chat bubbles
             chatMessages.innerHTML = conversation.map(msg => {
                 const isAI = msg.role === "ai" || msg.role === "assistant";
@@ -339,8 +345,17 @@ async function selectCall(callId, isSilent = false) {
                 `;
             }).join("");
 
-            // Auto scroll chat to bottom on new messages
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            const newCount = conversation.length;
+            chatMessages.dataset.msgCount = newCount;
+
+            if (isNearBottom || newCount > prevCount) {
+                // User was near bottom OR new message arrived → scroll to bottom
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            } else {
+                // User scrolled up to read history → restore their exact position
+                const scrollDelta = chatMessages.scrollHeight - prevScrollHeight;
+                chatMessages.scrollTop = prevScrollTop + scrollDelta;
+            }
         }
     } catch (err) {
         if (!isSilent) {
