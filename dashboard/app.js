@@ -8,8 +8,8 @@ let activeLiveCallId = null;
 function toRomanEnglish(text) {
     if (!text || typeof text !== "string") return text || "";
     
-    // Check if text contains non-Latin scripts (Arabic/Urdu or Devanagari)
-    const hasNonLatin = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0900-\u097F]/.test(text);
+    // Detect ALL non-Latin unicode scripts: Arabic/Urdu, Devanagari, CJK (Chinese/Japanese/Korean), Thai, etc.
+    const hasNonLatin = /[\u0250-\uFFFF]/.test(text);
     if (!hasNonLatin) return text;
 
     const charMap = {
@@ -34,9 +34,16 @@ function toRomanEnglish(text) {
     let result = "";
     for (let i = 0; i < text.length; i++) {
         const char = text[i];
-        result += charMap[char] !== undefined ? charMap[char] : char;
+        if (charMap[char] !== undefined) {
+            result += charMap[char];
+        } else if (/[\u0250-\uFFFF]/.test(char)) {
+            // For unknown non-Latin chars (CJK, etc.), use code-point representation
+            result += "[" + char + "]";
+        } else {
+            result += char;
+        }
     }
-    return result;
+    return result.replace(/\[(.)\]/g, ""); // Strip unrecognised non-latin blocks cleanly
 }
 
 // Initialize Dashboard on Load

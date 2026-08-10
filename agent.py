@@ -23,13 +23,12 @@ import livekit.agents.llm.chat_context as cc
 from pydantic_core import core_schema
 
 def ensure_roman_script(text: str) -> str:
-    """Converts Arabic, Urdu, or Devanagari non-Latin text into clean Roman English script."""
+    """Converts ANY non-Latin script (Arabic, Urdu, Devanagari, CJK, Japanese, Korean, Thai, etc.) to Roman English."""
     if not text:
         return ""
+    # Detect any character outside printable ASCII + common Latin extended range
     has_non_latin = any(
-        '\u0600' <= c <= '\u06FF' or '\u0750' <= c <= '\u077F' or 
-        '\u08A0' <= c <= '\u08FF' or '\uFB50' <= c <= '\uFDFF' or 
-        '\uFE70' <= c <= '\uFEFF' or '\u0900' <= c <= '\u097F'
+        ord(c) > 0x024F and not c.isascii()
         for c in text
     )
     if has_non_latin:
