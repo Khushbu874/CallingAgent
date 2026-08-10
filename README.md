@@ -20,21 +20,21 @@ The system enables an AI Voice Agent (*TrinityAI*) to make outbound PSTN/SIP pho
 
 ## 🛠️ Technology Stack & Versions
 
-| Layer | Component / Technology | Package & Version | Role / Description |
-| :--- | :--- | :--- | :--- |
-| **Language & Runtime** | Python | `3.9+` | Core agent process, server API, and dispatch scripts |
-| **Agent Framework** | LiveKit Agents | `livekit-agents == 1.5.8` | Real-time audio pipeline and worker runtime |
-| **LiveKit SDK** | LiveKit API & Protocol | `livekit == 1.1.7`, `livekit-api == 1.1.0` | Room orchestration, SIP dispatch, participant management |
-| **LLM (Brain)** | OpenAI GPT-4o-mini | `openai == 2.3.0` | Natural language understanding, dialogue, and function calling |
-| **STT (Speech-to-Text)** | OpenAI Whisper STT | `livekit-plugins-openai == 1.5.8` | Real-time speech transcription (`language="hi"`) |
-| **VAD** | Silero VAD | `livekit-plugins-silero == 1.5.8` | Voice Activity Detection for natural turn-taking |
-| **TTS (Text-to-Speech)** | OpenAI / Cartesia / ElevenLabs | `livekit-plugins-cartesia`, `livekit-plugins-elevenlabs` | Voice synthesis (Default: OpenAI `tts-1` `alloy`) |
-| **Noise Cancellation** | BVC Telephony | `livekit-plugins-noise-cancellation == 0.2.5` | Suppresses background noise during phone calls |
-| **Telephony Gateway** | Vobiz SIP Trunking | SIP Gateway | Connects LiveKit rooms to PSTN phone networks |
-| **Backend Web Server** | Flask & Flask-CORS | `Flask == 2.3.2`, `Flask-Cors == 3.0.10` | REST API for dashboard UI and call dispatch |
-| **Frontend UI** | HTML5, Vanilla JS, CSS3 | Glassmorphism UI | Responsive dashboard, real-time transcript viewer, dialer |
-| **Document Export** | html2pdf.js | `v0.10.1` (CDN) | Renders client-side PDF downloads of transcripts |
-| **Database** | File-based JSON Store | Local filesystem (`recordings/`) | High-speed JSON storage for live & historical calls |
+| Layer                          | Component / Technology         | Package & Version                                            | Role / Description                                             |
+| :----------------------------- | :----------------------------- | :----------------------------------------------------------- | :------------------------------------------------------------- |
+| **Language & Runtime**   | Python                         | `3.9+`                                                     | Core agent process, server API, and dispatch scripts           |
+| **Agent Framework**      | LiveKit Agents                 | `livekit-agents == 1.5.8`                                  | Real-time audio pipeline and worker runtime                    |
+| **LiveKit SDK**          | LiveKit API & Protocol         | `livekit == 1.1.7`, `livekit-api == 1.1.0`               | Room orchestration, SIP dispatch, participant management       |
+| **LLM (Brain)**          | OpenAI GPT-4o-mini             | `openai == 2.3.0`                                          | Natural language understanding, dialogue, and function calling |
+| **STT (Speech-to-Text)** | OpenAI Whisper STT             | `livekit-plugins-openai == 1.5.8`                          | Real-time speech transcription (`language="hi"`)             |
+| **VAD**                  | Silero VAD                     | `livekit-plugins-silero == 1.5.8`                          | Voice Activity Detection for natural turn-taking               |
+| **TTS (Text-to-Speech)** | OpenAI / Cartesia / ElevenLabs | `livekit-plugins-cartesia`, `livekit-plugins-elevenlabs` | Voice synthesis (Default: OpenAI`tts-1` `alloy`)           |
+| **Noise Cancellation**   | BVC Telephony                  | `livekit-plugins-noise-cancellation == 0.2.5`              | Suppresses background noise during phone calls                 |
+| **Telephony Gateway**    | Vobiz SIP Trunking             | SIP Gateway                                                  | Connects LiveKit rooms to PSTN phone networks                  |
+| **Backend Web Server**   | Flask & Flask-CORS             | `Flask == 2.3.2`, `Flask-Cors == 3.0.10`                 | REST API for dashboard UI and call dispatch                    |
+| **Frontend UI**          | HTML5, Vanilla JS, CSS3        | Glassmorphism UI                                             | Responsive dashboard, real-time transcript viewer, dialer      |
+| **Document Export**      | html2pdf.js                    | `v0.10.1` (CDN)                                            | Renders client-side PDF downloads of transcripts               |
+| **Database**             | File-based JSON Store          | Local filesystem (`recordings/`)                           | High-speed JSON storage for live & historical calls            |
 
 ---
 
@@ -79,6 +79,7 @@ The system enables an AI Voice Agent (*TrinityAI*) to make outbound PSTN/SIP pho
 ```
 
 ### Process Flow:
+
 1. **Call Initiation**: User enters a phone number in the Web Dashboard or runs `python make_call.py --to +91...`.
 2. **Dispatch**: The backend invokes `LiveKitAPI.agent_dispatch` to assign the `outbound-caller` worker to a newly created room.
 3. **SIP Connection**: `agent.py` joins the room and places an outbound SIP call using `CreateSIPParticipantRequest` via the configured Vobiz SIP Trunk ID.
@@ -209,10 +210,12 @@ PORT=5000
 ## 🚀 Step-by-Step Setup & Execution
 
 ### 1. Prerequisites
+
 - **Python 3.9 or higher** installed.
 - **uv** package manager installed (or standard `pip`).
 
 ### 2. Install Dependencies
+
 ```powershell
 # Create virtual environment
 uv venv
@@ -222,17 +225,23 @@ uv pip install -r requirements.txt
 ```
 
 ### 3. Start the AI Agent Worker
+
 Open Terminal 1:
+
 ```powershell
 python agent.py start
 ```
+
 *Wait until you see:* `INFO:livekit.agents:registered worker {"agent_name": "outbound-caller"}`
 
 ### 4. Start the Dashboard Web Server
+
 Open Terminal 2:
+
 ```powershell
 python dashboard_server.py
 ```
+
 *Access the Web Dashboard at:* `http://localhost:5000`
 
 ---
@@ -240,13 +249,16 @@ python dashboard_server.py
 ## 📞 How to Initiate Outbound Calls
 
 ### Option A: Via Web Dashboard (Recommended)
+
 1. Open `http://localhost:5000` in your web browser.
 2. Select Country Code (e.g. `+91`) and enter 10-digit mobile number.
 3. Click **Call Now**.
 4. Monitor the live conversation transcript streaming in real time on the dashboard.
 
 ### Option B: Via Command Line
+
 Open Terminal 3:
+
 ```powershell
 python make_call.py --to +919988776655
 ```
@@ -255,26 +267,30 @@ python make_call.py --to +919988776655
 
 ## 📡 REST API Reference
 
-| Endpoint | Method | Description |
-| :--- | :--- | :--- |
-| `GET /` | `GET` | Serves the Web Dashboard UI |
-| `GET /api/config` | `GET` | Returns system status & outbound phone settings |
-| `POST /api/call` | `POST` | Dispatches outbound call. Body: `{"phone_number": "...", "country_code": "+91"}` |
-| `GET /api/calls` | `GET` | Retrieves all call logs (live active calls listed first) |
-| `GET /api/calls/<call_id>` | `GET` | Fetches complete conversation transcript for specific call |
-| `DELETE /api/calls/<call_id>`| `DELETE`| Permanently deletes a call transcript recording |
+| Endpoint                        | Method     | Description                                                                       |
+| :------------------------------ | :--------- | :-------------------------------------------------------------------------------- |
+| `GET /`                       | `GET`    | Serves the Web Dashboard UI                                                       |
+| `GET /api/config`             | `GET`    | Returns system status & outbound phone settings                                   |
+| `POST /api/call`              | `POST`   | Dispatches outbound call. Body:`{"phone_number": "...", "country_code": "+91"}` |
+| `GET /api/calls`              | `GET`    | Retrieves all call logs (live active calls listed first)                          |
+| `GET /api/calls/<call_id>`    | `GET`    | Fetches complete conversation transcript for specific call                        |
+| `DELETE /api/calls/<call_id>` | `DELETE` | Permanently deletes a call transcript recording                                   |
 
 ---
 
 ## 🤝 Key Capabilities
 
 ### 1. Call Transfer
+
 When a user expresses interest in speaking with a manager or expert, TrinityAI executes `transfer_call()`, initiating a SIP referral to transfer the call without dropping the line.
 
 ### 2. Auto Disconnect (`end_call`)
+
 If the user indicates they want to hang up (*"call cut kar do"*, *"phone rakho"*, *"bye"*, *"disconnect"*), TrinityAI invokes `end_call()`, delivers a polite closing phrase, and disconnects the call automatically after 2.5 seconds.
 
 ### 3. Transcript Exporting
+
 From the Dashboard modal:
+
 - Click **Download PDF** to export a clean, styled document.
 - Click **Share Transcript** to share transcript files via Web Share API.

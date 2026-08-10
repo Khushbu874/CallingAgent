@@ -163,11 +163,39 @@ class TransferFunctions(llm.ToolContext):
         logger.info("end_call tool triggered by AI. Scheduling call disconnection...")
         async def _disconnect():
             await asyncio.sleep(2.5) # Allow final TTS goodbye audio to play to caller
-            logger.info("Disconnecting room context now...")
+            logger.info("Disconnecting room context and terminating PSTN call now...")
+            
+            # Identify SIP participant to explicitly hang up PSTN line
+            participant_identity = None
+            if self.phone_number:
+                participant_identity = f"sip_{self.phone_number}"
+            
+            if not participant_identity and hasattr(self.ctx.room, "remote_participants"):
+                for p in self.ctx.room.remote_participants.values():
+                    if p.identity:
+                        participant_identity = p.identity
+                        break
+            
+            if participant_identity:
+                try:
+                    logger.info(f"Removing SIP participant {participant_identity} to hang up phone call...")
+                    await self.ctx.api.room.remove_participant(
+                        api.RoomParticipantIdentity(
+                            room=self.ctx.room.name,
+                            identity=participant_identity
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to remove SIP participant: {e}")
+
             try:
-                await self.ctx.room.disconnect()
+                logger.info(f"Deleting LiveKit room {self.ctx.room.name}...")
+                await self.ctx.api.room.delete_room(
+                    api.DeleteRoomRequest(room=self.ctx.room.name)
+                )
             except Exception as e:
-                logger.warning(f"Error disconnecting room: {e}")
+                logger.warning(f"Failed to delete room: {e}")
+
             self.ctx.shutdown()
 
         asyncio.create_task(_disconnect())
