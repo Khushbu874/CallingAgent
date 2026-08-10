@@ -136,6 +136,7 @@ async function loadCalls(isSilent = false) {
                 if (activeLiveCallId) {
                     // A call WAS live and just completed!
                     activeLiveCallId = null;
+                    activeCallId = allCalls.length > 0 ? allCalls[0].id : null;
                     if (statusBox) {
                         statusTitle.textContent = "Call Completed & Saved 🟢";
                         statusDesc.textContent = "Transcript recording saved successfully!";
@@ -147,8 +148,12 @@ async function loadCalls(isSilent = false) {
                     }
                 }
 
-                // Select first completed call if none selected
-                if (allCalls.length > 0 && !activeCallId) {
+                // Ensure activeCallId points to a valid call in allCalls list
+                const activeExists = allCalls.some(c => c.id === activeCallId);
+                if (!activeExists && allCalls.length > 0) {
+                    activeCallId = allCalls[0].id;
+                    selectCall(allCalls[0].id, isSilent);
+                } else if (allCalls.length > 0 && !activeCallId) {
                     activeCallId = allCalls[0].id;
                     selectCall(allCalls[0].id, isSilent);
                 } else if (activeCallId) {
