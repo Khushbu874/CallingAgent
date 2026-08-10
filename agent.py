@@ -2,6 +2,7 @@ import logging
 import os
 import json
 import asyncio
+import anyascii
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -20,6 +21,20 @@ from livekit.agents.llm.chat_context import Instructions
 from typing import Annotated, Optional
 import livekit.agents.llm.chat_context as cc
 from pydantic_core import core_schema
+
+def ensure_roman_script(text: str) -> str:
+    """Converts Arabic, Urdu, or Devanagari non-Latin text into clean Roman English script."""
+    if not text:
+        return ""
+    has_non_latin = any(
+        '\u0600' <= c <= '\u06FF' or '\u0750' <= c <= '\u077F' or 
+        '\u08A0' <= c <= '\u08FF' or '\uFB50' <= c <= '\uFDFF' or 
+        '\uFE70' <= c <= '\uFEFF' or '\u0900' <= c <= '\u097F'
+        for c in text
+    )
+    if has_non_latin:
+        return anyascii.anyascii(text)
+    return text
 
 # Fix livekit-agents 1.5.8 Pydantic serialization bug for ChatMessage/Instructions
 @classmethod
@@ -295,7 +310,7 @@ async def entrypoint(ctx: agents.JobContext):
         item = ev.item
         if hasattr(item, "role") and item.role in ("user", "assistant"):
             role_label = "human" if item.role == "user" else "ai"
-            text = item.text_content or ""
+            text = ensure_roman_script(item.text_content or "")
             if text:
                 if not conversation_history or conversation_history[-1]["text"] != text:
                     conversation_history.append({
@@ -309,26 +324,29 @@ async def entrypoint(ctx: agents.JobContext):
     @session.on("user_transcript_finished")
     def on_user_transcript(event: agents.stt.SpeechEvent):
         if event.alternatives:
-            text = event.alternatives[0].text
-            if not conversation_history or conversation_history[-1]["text"] != text:
-                conversation_history.append({
-                    "role": "human",
-                    "text": text,
-                    "timestamp": datetime.now().strftime("%H:%M:%S")
-                })
-                logger.info(f"Transcript (Human): {text}")
-                update_live_file()
+            text = ensure_roman_script(event.alternatives[0].text)
+            if text:
+                if not conversation_history or conversation_history[-1]["text"] != text:
+                    conversation_history.append({
+                        "role": "human",
+                        "text": text,
+                        "timestamp": datetime.now().strftime("%H:%M:%S")
+                    })
+                    logger.info(f"Transcript (Human): {text}")
+                    update_live_file()
 
     @session.on("agent_transcript_finished")
     def on_agent_transcript(text: str):
-        if not conversation_history or conversation_history[-1]["text"] != text:
-            conversation_history.append({
-                "role": "ai",
-                "text": text,
-                "timestamp": datetime.now().strftime("%H:%M:%S")
-            })
-            logger.info(f"Transcript (AI): {text}")
-            update_live_file()
+        text = ensure_roman_script(text)
+        if text:
+            if not conversation_history or conversation_history[-1]["text"] != text:
+                conversation_history.append({
+                    "role": "ai",
+                    "text": text,
+                    "timestamp": datetime.now().strftime("%H:%M:%S")
+                })
+                logger.info(f"Transcript (AI): {text}")
+                update_live_file()
 
     async def save_conversation():
         if not os.path.exists("recordings"):
@@ -346,7 +364,7 @@ async def entrypoint(ctx: agents.JobContext):
             for item in session.history.items:
                 if hasattr(item, "role") and item.role in ("user", "assistant"):
                     role_label = "human" if item.role == "user" else "ai"
-                    text = item.text_content or ""
+                    text = ensure_roman_script(item.text_content or "")
                     if text:
                         item_time = (
                             datetime.fromtimestamp(item.created_at).strftime("%H:%M:%S")

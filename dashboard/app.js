@@ -4,6 +4,41 @@ let activeCallId = null;
 let pollTimer = null;
 let activeLiveCallId = null;
 
+// Transliterates non-Latin scripts (Arabic, Urdu, Devanagari) to Roman English letters
+function toRomanEnglish(text) {
+    if (!text || typeof text !== "string") return text || "";
+    
+    // Check if text contains non-Latin scripts (Arabic/Urdu or Devanagari)
+    const hasNonLatin = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0900-\u097F]/.test(text);
+    if (!hasNonLatin) return text;
+
+    const charMap = {
+        // Arabic / Urdu script to Roman English mapping
+        'ا': 'a', 'آ': 'aa', 'ب': 'b', 'پ': 'p', 'ت': 't', 'ٹ': 't', 'ث': 's', 'ج': 'j', 'چ': 'ch',
+        'ح': 'h', 'خ': 'kh', 'د': 'd', 'ڈ': 'd', 'ذ': 'z', 'ر': 'r', 'ڑ': 'r', 'ز': 'z', 'ژ': 'zh',
+        'س': 's', 'ش': 'sh', 'ص': 's', 'ض': 'z', 'ط': 't', 'ظ': 'z', 'ع': 'a', 'غ': 'gh', 'ف': 'f',
+        'ق': 'q', 'ک': 'k', 'گ': 'g', 'ل': 'l', 'م': 'm', 'ن': 'n', 'ں': 'n', 'و': 'o', 'ہ': 'h',
+        'ھ': 'h', 'ی': 'y', 'ے': 'ey', 'ۓ': 'y', 'ۃ': 'h', '؟': '?', '۔': '.',
+
+        // Devanagari script to Roman English mapping
+        'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo', 'ऋ': 'ri', 'ए': 'e', 'ऐ': 'ai',
+        'ओ': 'o', 'औ': 'au', 'अं': 'an', 'अः': 'ah', 'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh',
+        'ङ': 'ng', 'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'ny', 'ट': 't', 'ठ': 'th',
+        'ड': 'd', 'ढ': 'dh', 'ण': 'n', 'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
+        'प': 'p', 'फ': 'f', 'ब': 'b', 'भ': 'bh', 'म': 'm', 'य': 'y', 'र': 'r', 'ल': 'l',
+        'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h', 'ा': 'a', 'ि': 'i', 'ी': 'ee',
+        'ु': 'u', 'ू': 'oo', 'ृ': 'ri', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ं': 'n',
+        'ः': 'h', '्': '', '।': '.'
+    };
+
+    let result = "";
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        result += charMap[char] !== undefined ? charMap[char] : char;
+    }
+    return result;
+}
+
 // Initialize Dashboard on Load
 document.addEventListener("DOMContentLoaded", () => {
     loadCalls();
@@ -288,7 +323,7 @@ async function selectCall(callId, isSilent = false) {
                             ${avatarIcon}
                         </div>
                         <div class="chat-bubble">
-                            <div class="bubble-text">${escapeHtml(msg.text)}</div>
+                            <div class="bubble-text">${escapeHtml(toRomanEnglish(msg.text))}</div>
                             <div class="bubble-meta">
                                 <span>${senderName}</span>
                                 <span>${timeStr}</span>
@@ -379,7 +414,7 @@ function downloadPDF() {
                     ${speaker} • ${msg.timestamp || ''}
                 </div>
                 <div style="display: inline-block; padding: 10px 16px; border-radius: 12px; background: ${bg}; color: ${color}; max-width: 80%; text-align: left; font-size: 13px; line-height: 1.5; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                    ${escapeHtml(msg.text)}
+                    ${escapeHtml(toRomanEnglish(msg.text))}
                 </div>
             </div>
         `;
@@ -511,7 +546,7 @@ async function shareTranscript() {
     currentCallData.conversation.forEach((msg) => {
         const isAI = msg.role === "ai" || msg.role === "assistant";
         const speaker = isAI ? "🤖 TrinityAI" : "👤 Caller";
-        shareText += `${speaker}: ${msg.text}\n`;
+        shareText += `${speaker}: ${toRomanEnglish(msg.text)}\n`;
     });
 
     if (navigator.share) {
