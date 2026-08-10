@@ -1,6 +1,7 @@
 import logging
 import os
 import json
+import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -152,6 +153,26 @@ class TransferFunctions(llm.ToolContext):
             logger.error(f"Transfer failed: {e}")
             return f"Error executing transfer: {e}"
 
+    @llm.function_tool(
+        description="Disconnect/hang up the phone call when the user asks to end/cut/disconnect the call or says goodbye."
+    )
+    async def end_call(self):
+        """
+        Disconnect and end the current call.
+        """
+        logger.info("end_call tool triggered by AI. Scheduling call disconnection...")
+        async def _disconnect():
+            await asyncio.sleep(2.5) # Allow final TTS goodbye audio to play to caller
+            logger.info("Disconnecting room context now...")
+            try:
+                await self.ctx.room.disconnect()
+            except Exception as e:
+                logger.warning(f"Error disconnecting room: {e}")
+            self.ctx.shutdown()
+
+        asyncio.create_task(_disconnect())
+        return "Call disconnection scheduled. Say a polite goodbye to the user now."
+
 
 class OutboundAssistant(Agent):
 
@@ -176,7 +197,8 @@ class OutboundAssistant(Agent):
                     "3. HINGLISH: Respond in CONVERSATIONAL HINGLISH. Use English words mixed with Hindi. Avoid formal/shuddh Hindi.\n"
                     "4. SCRIPT: Always write response in ROMAN SCRIPT (English letters). NEVER use Devanagari/Hindi script.\n"
                     "5. LANGUAGE MIRRORING: If user speaks English, respond in English. If they speak Hinglish, respond in Hinglish.\n"
-                    "6. NEXT STEPS: If a user is interested in a demo or service, explain briefly and offer to transfer the call to a human expert using 'transfer_call'."
+                    "6. NEXT STEPS: If a user is interested in a demo or service, explain briefly and offer to transfer the call to a human expert using 'transfer_call'.\n"
+                    "7. CALL DISCONNECTION / CALL CUT: If the caller wants to end or cut the call (e.g., says 'call cut kar do', 'phone rakho', 'hang up', 'bye', 'disconnect', 'not interested', 'baad me baat karenge'), you MUST immediately call the 'end_call' tool and say a polite goodbye phrase in Hinglish (e.g., 'Theek hai, thank you for your time! Have a great day, bye!')."
                 )
             ),
         )
