@@ -212,9 +212,27 @@ function renderCallsList(calls) {
     }).join("");
 }
 
+// Mobile View Navigation Helpers
+function showChatOnMobile() {
+    if (window.innerWidth <= 768) {
+        const chatPanel = document.getElementById("chat-panel");
+        if (chatPanel) chatPanel.classList.add("active-mobile");
+    }
+}
+
+function showSidebarOnMobile() {
+    if (window.innerWidth <= 768) {
+        const chatPanel = document.getElementById("chat-panel");
+        if (chatPanel) chatPanel.classList.remove("active-mobile");
+    }
+}
+
 // Select a call and render its chat transcript
 async function selectCall(callId, isSilent = false) {
     activeCallId = callId;
+    if (!isSilent) {
+        showChatOnMobile();
+    }
 
     const chatHeader = document.getElementById("chat-header");
     const chatMessages = document.getElementById("chat-messages");
