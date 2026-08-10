@@ -192,11 +192,16 @@ function renderCallsList(calls) {
             ? `<span class="tag live-tag" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border-color: rgba(239, 68, 68, 0.4);"><i class="fa-solid fa-circle" style="font-size: 8px; animation: pulse 1s infinite;"></i> LIVE</span>`
             : `<span class="tag" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border-color: rgba(16, 185, 129, 0.3);">Done</span>`;
 
+        const deleteBtn = !isLive ? `<button class="item-delete-btn" onclick="event.stopPropagation(); deleteCurrentCall('${call.id}');" title="Delete Call Recording"><i class="fa-solid fa-trash-can"></i></button>` : ``;
+
         return `
             <div class="call-item ${isActive}" onclick="selectCall('${call.id}')">
                 <div class="call-item-header">
                     <span class="call-item-phone"><i class="fa-solid fa-phone"></i> ${escapeHtml(call.phone_number)}</span>
-                    ${statusBadge}
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        ${statusBadge}
+                        ${deleteBtn}
+                    </div>
                 </div>
                 <div class="call-item-meta">
                     <span class="call-item-date"><i class="fa-regular fa-clock"></i> ${escapeHtml(formattedDate)}</span>
@@ -533,4 +538,99 @@ function showToast(message) {
     setTimeout(() => {
         toast.style.display = "none";
     }, 3500);
+}
+
+// Delete Call Recording with SweetAlert2 Modal
+async function deleteCurrentCall(targetCallId = null) {
+    const callId = targetCallId || activeCallId;
+    if (!callId) return;
+
+    const call = allCalls.find(c => c.id === callId);
+    const phone = call ? call.phone_number : "this call record";
+
+    // Use SweetAlert2 (loaded locally via sweetalert2.all.min.js)
+    if (typeof Swal !== "undefined") {
+        const result = await Swal.fire({
+            title: "Delete Call Recording?",
+            text: `Are you sure you want to permanently delete the transcript recording for ${phone}?`,
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonColor: "#ef4444",
+            cancelButtonColor: "#64748b",
+            confirmButtonText: '<i class="fa-solid fa-trash-can"></i> Yes, Delete',
+            cancelButtonText: "Cancel",
+            customClass: {
+                popup: "swal-dark-popup"
+            }
+        });
+
+        if (!result.isConfirmed) return;
+    } else {
+        if (!confirm(`Are you sure you want to delete the call recording for ${phone}?`)) {
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch(`/api/calls/${callId}`, {
+            method: "DELETE"
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            if (typeof Swal !== "undefined") {
+                Swal.fire({
+                    title: "Deleted!",
+                    text: "Call transcript recording has been deleted.",
+                    icon: "success",
+                    timer: 2000,
+                    showConfirmButton: false,
+                    customClass: {
+                        popup: "swal-dark-popup"
+                    }
+                });
+            } else {
+                showToast("Call recording deleted.");
+            }
+
+            if (activeCallId === callId) {
+                activeCallId = null;
+                const chatHeader = document.getElementById("chat-header");
+                const chatMessages = document.getElementById("chat-messages");
+                if (chatHeader) chatHeader.classList.add("hidden");
+                if (chatMessages) {
+                    chatMessages.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fa-solid fa-headset empty-icon"></i>
+                            <h3>No Call Selected</h3>
+                            <p>Select a call from the left list to view the full two-sided transcript recorded between AI and Human.</p>
+                        </div>
+                    `;
+                }
+            }
+            loadCalls();
+        } else {
+            if (typeof Swal !== "undefined") {
+                Swal.fire({
+                    title: "Error!",
+                    text: data.error || "Failed to delete call recording.",
+                    icon: "error",
+                    customClass: {
+                        popup: "swal-dark-popup"
+                    }
+                });
+            }
+        }
+    } catch (err) {
+        if (typeof Swal !== "undefined") {
+            Swal.fire({
+                title: "Server Error",
+                text: err.message,
+                icon: "error",
+                customClass: {
+                    popup: "swal-dark-popup"
+                }
+            });
+        }
+    }
 }
