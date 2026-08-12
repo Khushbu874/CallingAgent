@@ -9,6 +9,12 @@ from dotenv import load_dotenv
 from livekit import api
 import anyascii
 
+try:
+    from supabase import create_client
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
+
 
 def ensure_roman_script(text: str) -> str:
     """Converts ANY non-Latin script to Roman English using anyascii."""
@@ -35,14 +41,28 @@ app = Flask(__name__, static_folder="dashboard", static_url_path="")
 CORS(app)
 
 RECORDINGS_DIR = "recordings"
-if not os.path.exists(RECORDINGS_DIR):
-    os.makedirs(RECORDINGS_DIR)
+
+# --- Supabase Client ---
+_supabase = None
+if SUPABASE_AVAILABLE:
+    _sb_url = os.getenv("SUPABASE_URL", "")
+    _sb_key = os.getenv("SUPABASE_SECRET_KEY", "") or os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+    if _sb_url and _sb_key:
+        try:
+            _supabase = create_client(_sb_url, _sb_key)
+            print("[Supabase] Connected successfully.")
+        except Exception as e:
+            print(f"[Supabase] Connection failed: {e}")
 
 # --- Routes for Frontend ---
 
 @app.route("/")
 def index():
     return send_from_directory("dashboard", "index.html")
+
+@app.route("/favicon.ico")
+def favicon():
+    return "", 204
 
 @app.route("/<path:filename>")
 def serve_static(filename):
@@ -121,8 +141,33 @@ def initiate_call():
 
 @app.route("/api/calls", methods=["GET"])
 def get_calls():
-    """Retrieve list of all recorded calls with transcript summaries."""
+    """Retrieve list of all recorded calls. Reads from Supabase first, falls back to local JSON."""
     calls = []
+
+    # --- Try Supabase first ---
+    if _supabase:
+        try:
+            result = _supabase.table("call_logs") \
+                .select("id, phone_number, room_name, status, total_messages, created_at, conversation") \
+                .order("created_at", desc=True) \
+                .execute()
+            for row in result.data:
+                call = sanitize_call({
+                    "id": str(row["id"]),
+                    "phone_number": row.get("phone_number", "Unknown"),
+                    "room_name": row.get("room_name", ""),
+                    "status": row.get("status", "Completed"),
+                    "total_messages": row.get("total_messages", 0),
+                    "timestamp": str(row.get("created_at", "")),
+                    "date": str(row.get("created_at", "")),
+                    "conversation": row.get("conversation", []),
+                })
+                calls.append(call)
+            return jsonify({"success": True, "calls": calls, "source": "supabase"})
+        except Exception as e:
+            print(f"[Supabase] Failed to fetch calls: {e} — falling back to local JSON")
+
+    # --- Fallback: Local JSON files ---
     if os.path.exists(RECORDINGS_DIR):
         for fname in os.listdir(RECORDINGS_DIR):
             if fname.endswith(".json"):
@@ -138,17 +183,42 @@ def get_calls():
                 except Exception as e:
                     print(f"Error reading {fname}: {e}")
 
-    # Sort calls by status (live first), then timestamp/filename descending
     def call_sort_key(x):
         is_live = 1 if x.get("id", "").startswith("live_") or x.get("status") == "In Progress (Live)" else 0
         return (is_live, x.get("timestamp", ""))
 
     calls.sort(key=call_sort_key, reverse=True)
-    return jsonify({"success": True, "calls": calls})
+    return jsonify({"success": True, "calls": calls, "source": "local"})
 
 @app.route("/api/calls/<call_id>", methods=["GET"])
 def get_call_detail(call_id):
-    """Retrieve full details and chat transcript for a single call."""
+    """Retrieve full details for a single call. Reads from Supabase first, falls back to local JSON."""
+
+    # --- Try Supabase first ---
+    if _supabase:
+        try:
+            result = _supabase.table("call_logs") \
+                .select("*") \
+                .eq("id", call_id) \
+                .single() \
+                .execute()
+            if result.data:
+                row = result.data
+                call = sanitize_call({
+                    "id": str(row["id"]),
+                    "phone_number": row.get("phone_number", "Unknown"),
+                    "room_name": row.get("room_name", ""),
+                    "status": row.get("status", "Completed"),
+                    "total_messages": row.get("total_messages", 0),
+                    "timestamp": str(row.get("created_at", "")),
+                    "date": str(row.get("created_at", "")),
+                    "conversation": row.get("conversation", []),
+                })
+                return jsonify({"success": True, "call": call})
+        except Exception as e:
+            print(f"[Supabase] Failed to fetch call {call_id}: {e} — falling back to local JSON")
+
+    # --- Fallback: Local JSON ---
     fname = f"{call_id}.json" if not call_id.endswith(".json") else call_id
     fpath = os.path.join(RECORDINGS_DIR, fname)
     
@@ -166,14 +236,28 @@ def get_call_detail(call_id):
 
 @app.route("/api/calls/<call_id>", methods=["DELETE"])
 def delete_call(call_id):
-    """Delete a call recording file."""
+    """Delete a call recording record from Supabase and/or local disk."""
+    deleted = False
+
+    if _supabase:
+        try:
+            _supabase.table("call_logs").delete().eq("id", call_id).execute()
+            deleted = True
+        except Exception as e:
+            print(f"[Supabase] Failed to delete call {call_id}: {e}")
+
     fname = f"{call_id}.json" if not call_id.endswith(".json") else call_id
     fpath = os.path.join(RECORDINGS_DIR, fname)
-    
     if os.path.exists(fpath):
-        os.remove(fpath)
+        try:
+            os.remove(fpath)
+            deleted = True
+        except Exception as e:
+            print(f"Failed to delete local file {fpath}: {e}")
+
+    if deleted:
         return jsonify({"success": True, "message": "Recording deleted."})
-    return jsonify({"success": False, "error": "File not found."}), 404
+    return jsonify({"success": False, "error": "Recording not found."}), 404
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))

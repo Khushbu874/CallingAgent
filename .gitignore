@@ -1,10 +1,15 @@
 .env
+.env.local
 .venv/
 __pycache__/
 *.pyc
+*.pyo
 recordings/
 node_modules/
 .vscode/
 .idea/
 *.log
 scratch/
+KMS/
+.DS_Store
+Thumbs.db

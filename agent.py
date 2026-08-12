@@ -3,8 +3,15 @@ import os
 import json
 import asyncio
 import anyascii
+import uuid
 from datetime import datetime
 from dotenv import load_dotenv
+
+try:
+    from supabase import create_client, Client as SupabaseClient
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
 
 from livekit import agents, api
 from livekit.agents import AgentSession, Agent, RoomInputOptions
@@ -68,6 +75,20 @@ load_dotenv(".env")
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("outbound-agent")
+
+# --- Supabase Client ---
+_supabase: "SupabaseClient | None" = None
+if SUPABASE_AVAILABLE:
+    _sb_url = os.getenv("SUPABASE_URL", "")
+    _sb_key = os.getenv("SUPABASE_SECRET_KEY", "") or os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+    if _sb_url and _sb_key:
+        try:
+            _supabase = create_client(_sb_url, _sb_key)
+            logger.info("Supabase client initialized successfully.")
+        except Exception as _e:
+            logger.warning(f"Supabase init failed: {_e}")
+    else:
+        logger.warning("Supabase URL/Key not set in .env — Supabase logging disabled.")
 
 
 # TRUNK ID - This needs to be set after you crate your trunk
@@ -267,6 +288,9 @@ async def entrypoint(ctx: agents.JobContext):
     except Exception:
         logger.warning("No valid JSON metadata found. This might be an inbound call.")
 
+    # Generate a unique deterministic UUID for this call session
+    call_id = str(uuid.uuid5(uuid.NAMESPACE_URL, ctx.room.name))
+
     # Initialize function context
     fnc_ctx = TransferFunctions(ctx, phone_number)
 
@@ -284,26 +308,20 @@ async def entrypoint(ctx: agents.JobContext):
     conversation_history = []
     
     def update_live_file():
-        """Helper to write real-time live conversation state while call is active."""
-        if not os.path.exists("recordings"):
-            os.makedirs("recordings")
-        safe_phone = str(phone_number).replace("+", "") if phone_number else "inbound"
-        live_filename = f"recordings/live_{safe_phone}.json"
-        try:
-            with open(live_filename, "w", encoding="utf-8") as f:
-                json.dump({
-                    "id": f"live_{safe_phone}",
+        """Helper to save real-time live conversation state to Supabase while call is active."""
+        if _supabase:
+            try:
+                _supabase.table("call_logs").upsert({
+                    "id": call_id,
                     "phone_number": phone_number or "Unknown",
                     "room_name": ctx.room.name,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "status": "In Progress (Live)",
+                    "conversation": conversation_history,
                     "total_messages": len(conversation_history),
-                    "conversation": conversation_history
-                }, f, indent=4, ensure_ascii=False)
-        except Exception as err:
-            logger.warning(f"Failed to update live transcript file: {err}")
-    
+                }).execute()
+            except Exception as err:
+                logger.warning(f"Failed to update live transcript: {err}")
+
     @session.on("conversation_item_added")
     def on_conversation_item_added(ev: agents.ConversationItemAddedEvent):
         item = ev.item
@@ -348,16 +366,6 @@ async def entrypoint(ctx: agents.JobContext):
                 update_live_file()
 
     async def save_conversation():
-        if not os.path.exists("recordings"):
-            os.makedirs("recordings")
-            
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        formatted_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        safe_phone = str(phone_number).replace("+", "") if phone_number else "inbound"
-        call_id = f"call_{safe_phone}_{timestamp}"
-        filename = f"recordings/{call_id}.json"
-        live_filename = f"recordings/live_{safe_phone}.json"
-        
         chat_list = []
         if hasattr(session, "history") and session.history and session.history.items:
             for item in session.history.items:
@@ -379,29 +387,30 @@ async def entrypoint(ctx: agents.JobContext):
         if not chat_list and conversation_history:
             chat_list = conversation_history
 
-        # Remove temporary live file if present
-        if os.path.exists(live_filename):
-            try:
-                os.remove(live_filename)
-            except Exception:
-                pass
-
         if not chat_list:
             logger.info("No transcript entries recorded to save.")
+            if _supabase:
+                try:
+                    # Remove live placeholder if call ended without speech
+                    _supabase.table("call_logs").delete().eq("id", call_id).execute()
+                except Exception:
+                    pass
             return
 
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump({
-                "id": call_id,
-                "phone_number": phone_number or "Unknown",
-                "room_name": ctx.room.name,
-                "timestamp": formatted_date,
-                "date": formatted_date,
-                "status": "Completed",
-                "total_messages": len(chat_list),
-                "conversation": chat_list
-            }, f, indent=4, ensure_ascii=False)
-        logger.info(f"Conversation saved to {filename}")
+        # Save/Update final status in Supabase
+        if _supabase:
+            try:
+                _supabase.table("call_logs").upsert({
+                    "id": call_id,
+                    "phone_number": phone_number or "Unknown",
+                    "room_name": ctx.room.name,
+                    "status": "Completed",
+                    "conversation": chat_list,
+                    "total_messages": len(chat_list),
+                }).execute()
+                logger.info(f"Conversation updated to Completed in Supabase Cloud for {phone_number}")
+            except Exception as e:
+                logger.warning(f"Failed to save to Supabase: {e}")
 
     # --- End Conversation Logging ---
 
@@ -438,12 +447,11 @@ async def entrypoint(ctx: agents.JobContext):
             
         except Exception as e:
             logger.error(f"Failed to place outbound call: {e}")
-            # Ensure we clean up if the call fails
-            ctx.shutdown()
-    else:
-        # Fallback for inbound calls (if this agent is used for that)
-        logger.info("No phone number in metadata. Treating as inbound/web call.")
-        await session.generate_reply()
+    # Register participant disconnected listener to immediately end session when caller hangs up
+    @ctx.room.on("participant_disconnected")
+    def on_participant_disconnected(participant):
+        logger.info(f"Participant {participant.identity} disconnected. Terminating agent session...")
+        ctx.shutdown()
 
     # Register shutdown callback so conversation is saved when the call ends/disconnects
     ctx.add_shutdown_callback(save_conversation)

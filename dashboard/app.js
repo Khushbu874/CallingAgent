@@ -56,10 +56,10 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Auto poll every 1.5 seconds for real-time live chat updates
+    // Auto poll every 2.5 seconds for real-time live chat updates
     pollTimer = setInterval(() => {
         loadCalls(true);
-    }, 1500);
+    }, 2500);
 });
 
 // Prefill phone number helper
@@ -284,14 +284,36 @@ async function selectCall(callId, isSilent = false) {
         chatMessages.innerHTML = `<div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i> Loading conversation transcript...</div>`;
     }
 
-    try {
-        const response = await fetch(`/api/calls/${callId}?t=${Date.now()}`, { cache: "no-store" });
-        const data = await response.json();
+    let call = allCalls.find(c => c.id === callId);
 
-        if (data.success && data.call) {
-            const call = data.call;
-            currentCallData = call;
-            const isLive = call.status === "In Progress (Live)" || call.id.startsWith("live_");
+    // Fetch from server if not found locally or during explicit user click
+    if (!call || !isSilent) {
+        try {
+            const response = await fetch(`/api/calls/${callId}?t=${Date.now()}`, { cache: "no-store" });
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.call) {
+                    call = data.call;
+                }
+            } else if (response.status === 404) {
+                // Call was deleted or does not exist — remove from memory list
+                allCalls = allCalls.filter(c => c.id !== callId);
+                if (activeCallId === callId) {
+                    activeCallId = allCalls.length > 0 ? allCalls[0].id : null;
+                }
+                renderCallsList(allCalls);
+                return;
+            }
+        } catch (err) {
+            console.warn("Call detail fetch notice:", err.message);
+            // Fallback to local memory item if available
+            call = call || allCalls.find(c => c.id === callId);
+        }
+    }
+
+    if (call) {
+        currentCallData = call;
+        const isLive = call.status === "In Progress (Live)" || call.id.startsWith("live_");
 
             chatHeader.classList.remove("hidden");
             
@@ -357,11 +379,6 @@ async function selectCall(callId, isSilent = false) {
                 chatMessages.scrollTop = prevScrollTop + scrollDelta;
             }
         }
-    } catch (err) {
-        if (!isSilent) {
-            chatMessages.innerHTML = `<div class="empty-state"><p>Failed to connect to server.</p></div>`;
-        }
-    }
 }
 
 // Client side search filter
