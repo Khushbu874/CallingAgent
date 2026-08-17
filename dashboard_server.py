@@ -3,7 +3,8 @@ import json
 import random
 import asyncio
 from datetime import datetime
-from flask import Flask, request, jsonify, send_from_directory
+from functools import wraps
+from flask import Flask, request, jsonify, send_from_directory, session
 from flask_cors import CORS
 from dotenv import load_dotenv
 from livekit import api
@@ -38,9 +39,21 @@ def sanitize_call(data: dict) -> dict:
 load_dotenv(".env")
 
 app = Flask(__name__, static_folder="dashboard", static_url_path="")
-CORS(app)
+app.secret_key = os.getenv("SECRET_KEY", "trinity-calling-agent-secret-key-2026")
+CORS(app, supports_credentials=True)
 
 RECORDINGS_DIR = "recordings"
+
+def is_authenticated():
+    return session.get("logged_in") is True
+
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not is_authenticated():
+            return jsonify({"success": False, "error": "Unauthorized. Please log in first."}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 # --- Supabase Client ---
 _supabase = None
@@ -68,10 +81,46 @@ def favicon():
 def serve_static(filename):
     return send_from_directory("dashboard", filename)
 
+# --- Authentication API Endpoints ---
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    """Authenticate admin user and establish session."""
+    data = request.json or {}
+    username = data.get("username", "").strip()
+    password = data.get("password", "").strip()
+
+    expected_user = os.getenv("DASHBOARD_USERNAME", "admin").strip()
+    expected_pass = os.getenv("DASHBOARD_PASSWORD", "trinity123").strip()
+
+    if username == expected_user and password == expected_pass:
+        session["logged_in"] = True
+        session["username"] = username
+        return jsonify({"success": True, "message": "Login successful!"})
+
+    return jsonify({"success": False, "error": "Invalid Username or Password!"}), 401
+
+@app.route("/api/logout", methods=["POST"])
+def logout():
+    """Clear session data."""
+    session.clear()
+    return jsonify({"success": True, "message": "Logged out successfully."})
+
+@app.route("/api/check-auth", methods=["GET"])
+def check_auth():
+    """Check current authentication status."""
+    auth = is_authenticated()
+    return jsonify({
+        "authenticated": auth,
+        "username": session.get("username", "") if auth else ""
+    })
+
 # --- API Endpoints ---
 
 @app.route("/api/config", methods=["GET"])
+@require_auth
 def get_config():
+
     """Returns basic configuration status."""
     return jsonify({
         "status": "ready",
@@ -80,6 +129,7 @@ def get_config():
     })
 
 @app.route("/api/call", methods=["POST"])
+@require_auth
 def initiate_call():
     """Dispatch an outbound AI call via LiveKit Cloud."""
     data = request.json or {}
@@ -140,6 +190,7 @@ def initiate_call():
         return jsonify({"success": False, "error": f"Failed to dispatch call: {str(e)}"}), 500
 
 @app.route("/api/calls", methods=["GET"])
+@require_auth
 def get_calls():
     """Retrieve list of all recorded calls. Reads from Supabase first, falls back to local JSON."""
     calls = []
@@ -191,6 +242,7 @@ def get_calls():
     return jsonify({"success": True, "calls": calls, "source": "local"})
 
 @app.route("/api/calls/<call_id>", methods=["GET"])
+@require_auth
 def get_call_detail(call_id):
     """Retrieve full details for a single call. Reads from Supabase first, falls back to local JSON."""
 
@@ -235,6 +287,7 @@ def get_call_detail(call_id):
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/calls/<call_id>", methods=["DELETE"])
+@require_auth
 def delete_call(call_id):
     """Delete a call recording record from Supabase and/or local disk."""
     deleted = False

@@ -45,22 +45,145 @@ function toRomanEnglish(text) {
     return result;
 }
 
+// Authentication State Helper Functions
+async function checkAuthStatus() {
+    const loginOverlay = document.getElementById("login-screen");
+    const mainWorkspace = document.getElementById("dashboard-workspace");
+    const logoutBtn = document.getElementById("logout-btn");
+
+    try {
+        const response = await fetch("/api/check-auth?t=" + Date.now(), { cache: "no-store" });
+        const data = await response.json();
+
+        if (data.authenticated) {
+            if (loginOverlay) loginOverlay.classList.add("hidden");
+            if (mainWorkspace) mainWorkspace.classList.remove("hidden");
+            if (logoutBtn) logoutBtn.classList.remove("hidden");
+
+            // Start calls list loading and auto polling
+            loadCalls();
+            if (!pollTimer) {
+                pollTimer = setInterval(() => {
+                    loadCalls(true);
+                }, 2500);
+            }
+        } else {
+            showLoginScreen();
+        }
+    } catch (err) {
+        showLoginScreen();
+    }
+}
+
+function showLoginScreen() {
+    const loginOverlay = document.getElementById("login-screen");
+    const mainWorkspace = document.getElementById("dashboard-workspace");
+    const logoutBtn = document.getElementById("logout-btn");
+
+    if (loginOverlay) loginOverlay.classList.remove("hidden");
+    if (mainWorkspace) mainWorkspace.classList.add("hidden");
+    if (logoutBtn) logoutBtn.classList.add("hidden");
+
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+}
+
+async function performLogin() {
+    const usernameInput = document.getElementById("login-username");
+    const passwordInput = document.getElementById("login-password");
+    const errorBox = document.getElementById("login-error");
+    const errorText = document.getElementById("login-error-text");
+    const submitBtn = document.getElementById("submit-login-btn");
+
+    const username = usernameInput ? usernameInput.value.trim() : "";
+    const password = passwordInput ? passwordInput.value.trim() : "";
+
+    if (!username || !password) {
+        if (errorBox && errorText) {
+            errorText.textContent = "Please enter both username and password.";
+            errorBox.classList.remove("hidden");
+        }
+        return;
+    }
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Authenticating...`;
+    }
+
+    try {
+        const response = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            if (errorBox) errorBox.classList.add("hidden");
+            if (passwordInput) passwordInput.value = "";
+            showToast("Login successful! Welcome to Trinity AI Console.");
+            checkAuthStatus();
+        } else {
+            if (errorBox && errorText) {
+                errorText.textContent = data.error || "Invalid username or password.";
+                errorBox.classList.remove("hidden");
+            }
+        }
+    } catch (err) {
+        if (errorBox && errorText) {
+            errorText.textContent = "Connection failed. Please check server connection.";
+            errorBox.classList.remove("hidden");
+        }
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = `<i class="fa-solid fa-arrow-right-to-bracket"></i> Login to Console`;
+        }
+    }
+}
+
+async function performLogout() {
+    try {
+        await fetch("/api/logout", { method: "POST" });
+    } catch (err) {
+        console.warn("Logout error:", err);
+    }
+    allCalls = [];
+    activeCallId = null;
+    showToast("Logged out successfully.");
+    showLoginScreen();
+}
+
+function togglePasswordVisibility() {
+    const passInput = document.getElementById("login-password");
+    const passIcon = document.getElementById("pass-icon");
+    if (!passInput || !passIcon) return;
+
+    if (passInput.type === "password") {
+        passInput.type = "text";
+        passIcon.className = "fa-solid fa-eye-slash";
+    } else {
+        passInput.type = "password";
+        passIcon.className = "fa-solid fa-eye";
+    }
+}
+
 // Initialize Dashboard on Load
 document.addEventListener("DOMContentLoaded", () => {
-    loadCalls();
-    
+    checkAuthStatus();
+
     const phoneInput = document.getElementById("phone-number");
     if (phoneInput) {
         phoneInput.addEventListener("input", (e) => {
             e.target.value = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
         });
     }
-
-    // Auto poll every 2.5 seconds for real-time live chat updates
-    pollTimer = setInterval(() => {
-        loadCalls(true);
-    }, 2500);
 });
+
 
 // Prefill phone number helper
 function prefillNumber(number) {
@@ -142,7 +265,14 @@ async function loadCalls(isSilent = false) {
 
     try {
         const response = await fetch(`/api/calls?t=${Date.now()}`, { cache: "no-store" });
+        
+        if (response.status === 401) {
+            showLoginScreen();
+            return;
+        }
+
         const data = await response.json();
+
 
         if (data.success) {
             allCalls = data.calls || [];

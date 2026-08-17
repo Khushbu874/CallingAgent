@@ -33,11 +33,57 @@
                 <span class="badge livekit"><i class="fa-solid fa-bolt"></i> LiveKit</span>
                 <span class="badge vobiz"><i class="fa-solid fa-signal"></i> Vobiz SIP</span>
                 <span class="badge status-online"><i class="fa-solid fa-circle"></i> Ready</span>
+                <button id="logout-btn" class="btn btn-sm btn-logout hidden" onclick="performLogout()" title="Logout from Console">
+                    <i class="fa-solid fa-right-from-bracket"></i> Logout
+                </button>
             </div>
         </header>
 
+        <!-- Fullscreen Glassmorphism Login Screen Overlay -->
+        <div id="login-screen" class="login-overlay">
+            <div class="login-card">
+                <div class="login-header">
+                    <div class="login-logo">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <h2>Trinity <span>AI</span> Login</h2>
+                    <p>Enter your administrator credentials to access the voice calling console and transcripts.</p>
+                </div>
+                
+                <form id="login-form" onsubmit="event.preventDefault(); performLogin();" class="login-form">
+                    <div class="login-field">
+                        <label for="login-username"><i class="fa-solid fa-user"></i> Username</label>
+                        <input type="text" id="login-username" class="form-control" placeholder="Enter username..." required autocomplete="username">
+                    </div>
+                    
+                    <div class="login-field">
+                        <label for="login-password"><i class="fa-solid fa-lock"></i> Password</label>
+                        <div class="password-wrapper">
+                            <input type="password" id="login-password" class="form-control" placeholder="Enter password..." required autocomplete="current-password">
+                            <button type="button" class="btn-toggle-pass" onclick="togglePasswordVisibility()" title="Show/Hide Password">
+                                <i id="pass-icon" class="fa-solid fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="login-error" class="login-error-box hidden">
+                        <i class="fa-solid fa-circle-exclamation"></i> <span id="login-error-text">Invalid username or password.</span>
+                    </div>
+
+                    <button type="submit" id="submit-login-btn" class="btn btn-primary btn-block btn-login">
+                        <i class="fa-solid fa-arrow-right-to-bracket"></i> Login to Console
+                    </button>
+                </form>
+
+                <div class="login-footer">
+                    <p><i class="fa-solid fa-lock"></i> Protected by Trinity AI Voice Gateway</p>
+                </div>
+            </div>
+        </div>
+
         <!-- Main Workspace (No-scroll Single Page Layout) -->
-        <main class="dashboard-workspace">
+        <main class="dashboard-workspace hidden" id="dashboard-workspace">
+
             
             <!-- Left Sidebar (Dialer & Call History - WhatsApp Style) -->
             <aside class="sidebar-panel" id="sidebar-panel">
